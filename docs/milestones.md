@@ -20,7 +20,7 @@ Not on a device.
 | Development build (`scripts/build.sh`) links | passed |
 | Release build (`-DPICOCALC_DOOM_UART=OFF`) links | passed |
 | A clean clone (no `--recurse-submodules`) builds a UF2 with `scripts/build.sh` alone | passed |
-| CI on GitHub | **not yet run**: the branch is not pushed |
+| CI on GitHub (pull request #1): host tests, source check, both firmware builds | passed |
 
 **The patch** edits one file, `drivers/sdcard/sdcard.c`: `CLK_FAST`
 overridable, built at 25 MHz, and `get_fattime()` compiled out for the
@@ -76,3 +76,6 @@ fall. The largest SRAM users are as §3.4 says: `visplanes` 84,992,
 - The SDK's default linker script and core 0's stack against Doom's
   recursion (M1, painted).
 - CI's toolchain is 13.2.Rel1, as Quest's; the sizes above are 15.2.Rel1's.
+  CI's `arm-none-eabi-size` (text + data, bss): development 496,720 and
+  301,980; release 465,936 and 301,960, so 13.2's code is about 8 KB
+  smaller.
