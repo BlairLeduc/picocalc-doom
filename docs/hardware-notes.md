@@ -1420,6 +1420,36 @@ cadence, matrix tables and the list of swallowed chords are in
 Match it to the installed firmware; a header constant does not prove that the
 firmware dispatches that register or emits that event.
 
+**Observed on a Plus 2 W, 2026-11-07**, a first-person game played from the
+keyboard for about eleven minutes, and the keys pressed alone and with
+Shift, Ctrl and Alt (B was missed with Alt): 2,326 FIFO events, the FIFO
+drained every 20–33 ms. Measured from the log of every event; read
+alongside the MCU's source above.
+
+- **Every code in the MCU's published keymap arrived**, apart from the
+  power button's `0x91`, which was not pressed, and **no code outside
+  it**: `0x20`–`0x7e` (letters as capitals with Shift and
+  with Alt; none was typed with Caps Lock on), F1–F10 as `0x81`–`0x89` and `0x90`, the four modifiers, Esc,
+  the arrows, Caps Lock, and Break, Insert, Home, Del, End, PgUp and PgDn.
+- **Alt with an arrow arrives as the arrow, with Alt held**: Alt `0xa1`
+  pressed, then `0xb4`–`0xb7` unchanged, all four. **Alt with F1** arrives
+  as `0x81` with Alt held.
+- **Five keys held at once were all delivered**: `` ` ``, `/`, Up, Space and
+  Ctrl, each with its own press and release, and Up, Ctrl and Space
+  held together twice. Nothing was lost to ghosting in this session.
+- **Alt with Space, `,` or `.` sends nothing** when the key goes down
+  after Alt: in the whole session no press of any of them arrived under
+  Alt. Alt with `B`, which the source also consumes, was not tried. A Space already held when Alt goes down keeps sending its repeats
+  (as presses) with Alt held.
+- **Shift with Left or Right sends nothing**, release included: six times
+  Shift went down with Left or Right held, and no event for that arrow
+  came until it was pressed again. A program that lets go of a held Left
+  or Right when Shift goes down keeps no arrow stuck.
+- **Insert held (Shift+Enter) repeats as held events**, state 2, like the
+  arrows and modifiers, not as presses like the printable keys.
+- **Each FIFO read took 4.82–4.92 ms** (an empty read 4,823 µs, 50 a second
+  with nothing else on the core), with no failed transaction in 693 s.
+
 ---
 
 ## 7. Storage

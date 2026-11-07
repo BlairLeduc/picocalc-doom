@@ -911,6 +911,17 @@ The rules, every one from measured MCU behaviour (HW §6.1–6.3):
   with no type-ahead). Hold each key down a minimum number of fields and
   leave a gap before the next.
 
+**A poll that shares a loop with the presenter runs at the frame rate,
+whatever its deadline says.** The loop presents a frame when one is ready
+(about 19 ms for a full 320×240 frame) and polls when its deadline has
+passed; with a 20 ms deadline and frames every 33 ms, each present is
+followed by one poll and the deadline falls inside the next present. A
+Doom port asking for 50 Hz measured 50 polls a second with nothing on the
+screen and 27–36, mostly 32–33, in play at 32–34 frames a second
+(Plus 2 W, 2026-11-07).
+Count the polls each second in the heartbeat, and if the rate matters,
+poll between the present's rows rather than only between presents.
+
 **Settle the hold and the gap by executing the ROM, with controls.** The
 Ace's scan takes a key on the third consecutive field that sees it, needs
 one field with every key up before the next, and repeats a key held 33
