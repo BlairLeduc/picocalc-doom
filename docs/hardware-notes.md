@@ -129,6 +129,9 @@ Design around these from the start; each one has cost a project time.
   on 2026-10-29, read on each side of the 150 → 300 MHz switch (PLL, rail and
   flash divider), it advanced 1–2 ms across 1.3–1.6 ms of uptime, as its
   millisecond resolution allows, and agreed with the workstation's UTC.
+  The same on 2026-11-06, with the flash at divider 4 and RX delay 4 at
+  300 MHz: 2 ms across 1.50 ms of uptime on that Plus 2 W, twice, and 2 ms
+  across 1.97 ms on a Pimoroni Pico Plus 2 (no W) started by UF2 Loader.
 
 ---
 
@@ -216,6 +219,25 @@ synchronize writes to the panel's scan.
 Keep fixed capacities in one header rather than scattered `#define`s; you will
 be trading them against each other repeatedly.
 
+**Core 0's default stack is small, and core 1's is right under it.** Read
+from the Pico SDK 2.3.1 RP2350 default linker script, 2026-11-06: core 0's
+stack starts at the top of SCRATCH_Y (4 KB at `0x20081000`) and grows down;
+core 1's stack (`multicore_launch_core1`, 2 KB by default) is the top of
+SCRATCH_X, at `0x20080800`–`0x20081000`, directly below. Anything placed in
+`.scratch_y` (`__scratch_y("…")` data, `.section .scratch_y.*`) sits at the
+bottom of SCRATCH_Y and comes out of core 0's room. `PICO_STACK_SIZE` only
+sizes a dummy section; nothing stops core 0 at it. A core 0 that goes
+deeper than its room writes over core 1's stack, silently, while both run.
+**Measured** on a Pimoroni Pico Plus 2 W, 2026-11-06, Pico SDK 2.3.1: a
+program whose OPL2 emulator keeps a 1 KB table in `.scratch_y`
+(`__scratch_y_start__` `0x20081000`, `__scratch_y_end__` `0x20081400`) left
+core 0 3,072 B. Painted from `__scratch_y_end__` to the stack pointer at the
+top of `main()` and scanned for the first word changed, a Chocolate
+Doom-derived engine reached **2,004 B** of it running its title and demos
+of Doom II unseen at 300 MHz, about 1 KB short of core 1's stack. Paint
+both stacks from bring-up and report both high-water marks; a core 0 at its
+whole room has already run into core 1's.
+
 ### 2.4 PSRAM — Plus 2 W only
 
 8 MB, on QMI chip select 1 (GPIO 47). With a matching board definition and
@@ -231,7 +253,10 @@ memory-mapped window. Do not assume a generic `pico2` build enables it. Three th
   100 MHz (divider 3, RX delay 3), 2026-10-29, a word at every power-of-two
   offset plus 64 KB of pseudo-random words spread over the 8 MB, written,
   read back and written inverted, 32,790 words with three clean-and-invalidate
-  round trips, took 16.3–16.5 ms and passed.
+  round trips, took 16.3–16.5 ms and passed. The same check on the same
+  board, 2026-11-06, another program's development build, with core 1
+  running a polling loop from flash meanwhile, took 17.1–17.2 ms in two
+  boots and passed.
 - **PSRAM reads go through the same 16 KB XIP cache as instruction fetch from
   flash.** Cached reads are SRAM-speed; a cache-hostile access pattern is not,
   and it contends with your code. §9.3 has the measurement.
