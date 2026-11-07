@@ -17,3 +17,9 @@ target_include_directories(test_clock PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
 target_compile_definitions(test_clock PRIVATE PICOCALC_DOOM_HOST=1)
 target_compile_options(test_clock PRIVATE ${PICOCALC_DOOM_WARNINGS})
 add_test(NAME test_clock COMMAND test_clock)
+
+# Frame hashes: the CRC-32 and the one-hash-a-tic rule (§15).
+add_executable(test_frame_hash test_frame_hash.c ${PROJECT_SOURCE_DIR}/picocalc/frame_hash.c)
+target_include_directories(test_frame_hash PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
+target_compile_options(test_frame_hash PRIVATE ${PICOCALC_DOOM_WARNINGS})
+add_test(NAME test_frame_hash COMMAND test_frame_hash)

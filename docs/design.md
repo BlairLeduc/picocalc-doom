@@ -526,6 +526,30 @@ only when they change and cleared when their time is up, as Quest §7.4.
 Doom's own messages stay in its frame. A perf line is a development-build
 option, measured on and off (EL §12).
 
+### 7.6 The re-release's wide pictures
+
+The 2024 re-release draws its full-screen pictures for a widescreen
+display: `TITLEPIC`, `CREDIT`, `HELP1`, `INTERPIC`, `WIMAP0`–`2`, `ENDPIC`,
+`VICTORY2` and `PFUB2` are 560 pixels wide, and `STBAR` 576, each with the
+320 the game draws in the middle (read from the owner's `doom.wad`,
+2026-11-06; `doom2.wad`'s `STBAR` is the same). Upstream's `V_DrawPatch`
+skips a patch that does not fit the screen, so with these IWADs the title,
+the help screens, the intermission maps and the status bar's background
+were never drawn: the status bar showed whatever the zone held under its
+backing buffer, which differed from run to run (M2).
+
+The patch centres a patch wider than the screen and crops it to the
+screen, as Chocolate Doom does: `x -= (width − 320) / 2`, then only the
+columns on screen. A 320-wide patch is drawn as before. `PFUB2`, the
+bunny scroll at Doom's end, is drawn column by column by `f_finale.c`,
+not by `V_DrawPatch`, and shows its left 320 columns; it is carried on
+the milestones' not-checked list until someone plays to the end of
+episode 3.
+
+The original 1.9 IWADs' pictures are all 320 wide (§10.4), so none of this
+touches them; the re-release's No Rest for the Living and Master Levels
+have 426-wide title pictures, centred the same way.
+
 ---
 
 ## 8. Audio
@@ -764,22 +788,45 @@ The WAD list skips macOS's `._` files (HW §7.1).
 
 ### 10.4 The owner's WADs
 
-The owner's copies (2026-11-06, in `reference/`, gitignored) are the 2024
-re-release of Doom and Doom II, which ships the add-ons as PWADs. Read from
-each file's header and directory; what each needs is read from upstream's
-source, **not yet run**. The rows marked **No** for good (Legacy of Rust
-and its resources, `iddm1.wad`, `extras.wad`) were removed from
-`reference/` the same day at the owner's request; SIGIL and SIGIL II stay
-there, since they are deferred, not dropped (§19).
+The owner's copies (in `reference/`, gitignored) are the 2024 re-release
+of Doom and Doom II, which ships the add-ons as PWADs, and, extracted from
+the same purchase's installer on 2026-11-07, **the original DOS data** it
+also carries (`doom/dosdoom/base/`), whose `DOOM.WAD` is byte for byte the
+owner's separate copy of The Ultimate Doom. Read from each file's header
+and directory, by MD5 against the published 1.9 sums; what each needs was
+run on the host engine in M2. The rows marked **No** are not used; SIGIL
+and SIGIL II are deferred, not dropped (§19).
+
+**The host engine and its references use the original 1.9 IWADs**
+(from 2026-11-07): the data vanilla Doom, Chocolate Doom and every
+recorded demo were made for, and what most owners' older copies are. Every
+full-screen picture in them is 320 wide. No original DOS release of No
+Rest for the Living exists and the one-file Master Levels is easier to
+load, so those two are the re-release's PWADs, over the 1.9 Doom II; both
+play their demos to the end there. `reference/doom.wad` and the rest are
+links to the chosen files. The re-release IWADs still run (§7.6), and stay
+on the list of what is checked.
+
+Original DOS data (1.9):
 
 | File | Kind | Lumps | Size | Maps | Demos | MD5 | Here |
 |---|---|---:|---:|---|---|---|---|
-| `doom.wad` | IWAD | 2,308 | 12,996,515 | E1M1–E4M9 (36) | 4 | `3b37188f6337f15718b617c16e6e7a9c` | **Runs**; the WAD list's Doom |
+| `DOOM.WAD` (The Ultimate Doom 1.9) | IWAD | 2,306 | 12,408,292 | E1M1–E4M9 (36) | 4 | `c4fe9fd920207691a9f493668e0a2083` | **Runs**; the reference `doom.wad` |
+| `DOOM2.WAD` (Doom II 1.9) | IWAD | 2,919 | 14,604,584 | MAP01–32 | 3 | `25e1459ca71d321525f84628f45ca8cd` | **Runs**; the reference `doom2.wad` |
+| `PLUTONIA.WAD` (Final Doom) | IWAD | 2,984 | 17,420,824 | MAP01–32 | 3 | `75c8cf89566741fa9d22447604053bd7` | **Runs**; the reference `plutonia.wad` |
+| `TNT.WAD` (Final Doom) | IWAD | 3,101 | 18,195,736 | MAP01–32 | 3 | `4e158d9953c79ccf97bd0663244cc6b6` | **Runs**; the reference `tnt.wad` |
+| `master/wads/*.WAD` (Master Levels) | 20 PWADs | — | 104–352 KB each | one map each | 0 | — | Not used: the one-file `masterlevels.wad` holds the same 21 maps |
+
+The 2024 re-release:
+
+| File | Kind | Lumps | Size | Maps | Demos | MD5 | Here |
+|---|---|---:|---:|---|---|---|---|
+| `doom.wad` | IWAD | 2,308 | 12,996,515 | E1M1–E4M9 (36) | 4 | `3b37188f6337f15718b617c16e6e7a9c` | **Runs** (§7.6) |
 | `doom2.wad` | IWAD | 2,928 | 14,951,361 | MAP01–32 | 3 | `64a4c88a871da67492aaa2020a068cd8` | **Runs** |
 | `plutonia.wad` | IWAD | 2,991 | 17,704,206 | MAP01–32 | 3 | `e47cf6d82a0ccedf8c1c16a284bb5937` | **Runs** |
 | `tnt.wad` | IWAD | 3,109 | 18,507,237 | MAP01–32 | 3 | `ad7885c17a6b9b79b09d7a7634dd7e2c` | **Runs** |
-| `nerve.wad` (No Rest for the Living) | PWAD | 117 | 4,039,441 | MAP01–09 | 3 | `23422eb42833ac7b0dd59c0c7ae18a6f` | **Partly**: with `-file` over Doom II its nine maps replace MAP01–09, but this engine has no mission pack for it, so the level names are Doom II's and the episode does not end after MAP08 |
-| `masterlevels.wad` | PWAD | 277 | 3,920,169 | MAP01–21 | 3 | `ab3ce78e085e50a61f6dff46aabbfaeb` | **Partly**, the same way: Doom II's names, and skies by map number, where the re-release sets them in `UMAPINFO` |
+| `nerve.wad` (No Rest for the Living) | PWAD | 117 | 4,039,441 | MAP01–09 | 3 | `23422eb42833ac7b0dd59c0c7ae18a6f` | The reference `nerve.wad`. **Partly**: with `-file` over Doom II its nine maps replace MAP01–09, but this engine has no mission pack for it, so the level names are Doom II's and the episode does not end after MAP08 |
+| `masterlevels.wad` | PWAD | 277 | 3,920,169 | MAP01–21 | 3 | `ab3ce78e085e50a61f6dff46aabbfaeb` | The reference `masterlevels.wad`. **Partly**, the same way: Doom II's names, and skies by map number, where the re-release sets them in `UMAPINFO` |
 | `sigil.wad` | PWAD | 149 | 4,660,156 | E5M1–E5M9 | 4 | `08ee05388c137db5f5d7996e89425b95` | **No**: a fifth episode, which a vanilla engine cannot reach (§19) |
 | `sigil2.wad` | PWAD | 185 | 42,333,362 | E6M1–E6M9 | 4 | `953f65cf079d0ba9a25be2c407da7ec1` | **No**: a sixth episode; most of its size is digital music this engine cannot play |
 | `id1.wad` (Legacy of Rust), `id1-res.wad`, `id1-tex.wad`, `id1-weap.wad`, `id1-mus.wad`, `id24res.wad` | PWADs | — | — | MAP01–… (17) | 4 | — | **No**: built for the re-release's ID24 features (§19) |
@@ -789,7 +836,7 @@ there, since they are deferred, not dropped (§19).
 Doom engines identify an IWAD by its file name, not its contents, so the
 re-release IWADs are picked up like any others. Their extra lumps
 (`GAMECONF`, `SKYDEFS`, `UMAPINFO`, `DMXGUS`) are unknown to this engine and
-ignored; M2 checks that they are and that their demos play in sync. PWADs
+ignored; M2 checked that they are and that their demos play to the end. PWADs
 are not in the WAD list (D13); they are loaded with `-file`, from
 `picocalc.ini`'s `args` or the shell (§13.4).
 
@@ -885,23 +932,29 @@ Upstream, built (§3.4): `.data` 73,544 and `.bss` 320,400 bytes leave
 | `I_VideoBuffer` in SRAM (§7.3 strategies B and C) | 76,800 |
 
 **The heap's one big user is the WAD directory.** `ExtendLumpInfo()`
-`calloc`s 28 bytes a lump. Read from the owner's WADs in `reference/`
-(2026-11-06, §10.4), with the shareware IWAD estimated:
+`calloc`s 28 bytes a lump. Read from the owner's 1.9 WADs in `reference/`
+(2026-11-07, §10.4), with the shareware IWAD estimated; the re-release's
+IWADs have 2–9 lumps more:
 
 | IWAD | Lumps | Directory, bytes |
 |---|---:|---:|
 | `doom1.wad` (shareware, not to hand) | ~1,264 | ~35,400 |
-| `doom.wad` | 2,308 | 64,624 |
-| `doom2.wad` | 2,928 | 81,984 |
-| `plutonia.wad` | 2,991 | 83,748 |
-| `tnt.wad` | 3,109 | 87,052 |
+| `doom.wad` (The Ultimate Doom) | 2,306 | 64,568 |
+| `doom2.wad` | 2,919 | 81,732 |
+| `plutonia.wad` | 2,984 | 83,552 |
+| `tnt.wad` | 3,101 | 86,828 |
+| Doom II with `nerve.wad` | 3,036 | 85,008 |
+| Doom II with `masterlevels.wad` | 3,196 | 89,488 |
+
+The counts are the engine's own, measured by the host engine (M2), and
+agree with the WADs' headers.
 
 Every IWAD is 13–19 MB, more than the PSRAM, which is why upstream reads
 lumps from the card on demand rather than loading the WAD.
 
 A PWAD extends the directory, and the extension holds old and new at once:
-Doom II with `masterlevels.wad` (277 lumps) peaks at (2,928 + 3,205) × 28 =
-171,724 bytes, past the whole heap. With `I_VideoBuffer` in SRAM, TNT alone
+Doom II with `masterlevels.wad` (277 lumps) peaks at (2,919 + 3,196) × 28 =
+171,220 bytes, past the whole heap. With `I_VideoBuffer` in SRAM, TNT alone
 would not fit. So the patch moves
 the directory to PSRAM (§5.3) in M3, before anything competes for the
 heap. The directory is read on every lump lookup, in small pieces, which
@@ -936,6 +989,35 @@ zone's low-water on every map of every IWAD to hand (M2), and the device's
 heartbeat counts card reads in play. The temporary half is 4 MB for one
 song's conversion, which is generous; the zone can grow into it if M2 says
 it must.
+
+**Measured (M2, the host engine, on the 1.9 IWADs of §10.4, 2026-11-07):**
+yes. Warped to every map of every WAD to hand at skill 4 and run for 2,100 tics, the zone's peak of
+blocks that cannot be purged, and what was left free or purgeable at
+worst, of 3,145,728 bytes:
+
+| WAD | Maps | Peak not purgeable | Least free or purgeable | Reads in play, all maps |
+|---|---:|---|---:|---:|
+| `doom.wad` | 36 | 633,168–1,142,264 (E4M9) | 2,003,464 | 233 |
+| `doom2.wad` | 32 | 726,840–1,304,688 (MAP15) | 1,841,040 | 170 |
+| `plutonia.wad` | 32 | 923,128–1,669,520 (MAP28) | 1,476,208 | 321 |
+| `tnt.wad` | 32 | 987,600–1,742,488 (MAP20) | 1,403,240 | 371 |
+| `nerve.wad` over Doom II | 9 | 1,039,528–**2,325,928** (MAP04) | **819,800** | 21 |
+| `masterlevels.wad` over Doom II | 21 | 722,632–1,582,312 (MAP12) | 1,563,416 | 134 |
+
+The re-release IWADs (2026-11-06) peaked about 10 KB higher on each map,
+their 576-wide `STBAR` and 560-wide pictures being larger, and left
+809,232 bytes at worst, on the same map.
+
+No `Z_Malloc` failed. No Rest for the Living's maps are the largest by
+far (MAP04's `SIDEDEFS` is 222,690 bytes, Doom II MAP04's 23,400), and
+leave 0.8 MB. "Reads in play" counts every read of a WAD once the level's
+first frame is drawn, exactly (the host's stdio read, counted): after
+Doom's level precache, a lump the zone purged and needs again, or one the
+precache does not cover. A minute of standing still is a light load; the
+demos, which move and skip the precache, read 93–548 lumps in play
+(0.3–1.6 MB), and a 4 MB zone cut Doom's demo1 from 124 to 39 and
+Plutonia's demo1 only from 531 to 477, so most of those reads are first
+sightings, not purges. The device's heartbeat counts the real ones from M3.
 
 ### 12.3 Flash
 
@@ -1138,9 +1220,17 @@ not a CTest, since it needs WADs, which never go in the repository:
 - **Demo sync.** `-timedemo` of each IWAD's demos plays to its end.
   Upstream's changes to the renderer should not reach game logic; a desync
   says one did.
-- **Frame hashes.** A CRC of each frame (pixels and palette index) during
-  `-timedemo demo1`. Under `-timedemo` Doom renders exactly one frame per
-  tic, so the list is deterministic. **The same list from the device** shows
+- **Frame hashes.** A CRC-32 of each frame (pixels, then the palette)
+  during `-timedemo demo1`, one per game tic: the last frame drawn in it,
+  since a screen wipe draws as many frames in one tic as real time allows
+  (`picocalc/frame_hash.c`, shared with the device). The list is made four
+  times with the zone filled and placed differently; a tic whose hash
+  changes read memory Doom never wrote (a sprite's top row can read past
+  its patch, as in vanilla) and is marked to be skipped. The list is
+  `test/host/engine/doom-demo1.crc`, made from The Ultimate Doom 1.9
+  (§10.4); a CTest checks it still matches when that `doom.wad` is to
+  hand, and skips, saying so, when `reference/doom.wad` is another (the
+  list's header carries the MD5). **The same list from the device** shows
   the engine on the board is the host's (EL §13.3), and it is the check that
   catches a marginal PSRAM or flash timing, which corrupts quietly
   (HW §3).
@@ -1400,12 +1490,12 @@ milestone named.
 | Alt+arrow delivered as the arrow with Alt held | yes | HW §6.3, from the MCU's source | medium | M4 |
 | Three keys at once (arrow, Ctrl, Space) delivered | yes | not tried | low | M4 |
 | Shift+Left/Right swallowed, release included | yes | HW §6.3, from the MCU's source | high | M4, by the trap's test on the keyboard |
-| Lumps per IWAD (§12.1) | 2,308 / 2,928 / 2,991 / 3,109 (Doom, Doom II, Plutonia, TNT); shareware ~1,264 | the owner's WADs, read 2026-11-06 (§10.4) | confirmed, but the shareware count | Confirmed 2026-11-06 |
-| This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes | not run; vanilla engines are said to | medium | M2 |
-| A 3 MB zone holds every map of the commercial IWADs | yes | upstream ships it; not measured | medium | M2, M5 |
+| Lumps per IWAD (§12.1) | 2,306 / 2,919 / 2,984 / 3,101 (The Ultimate Doom, Doom II, Plutonia, TNT, 1.9); the re-release's 2–9 more; shareware ~1,264 | the owner's WADs, read 2026-11-06 and -07 (§10.4) | confirmed, but the shareware count | Confirmed 2026-11-07 |
+| This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes, once its 560- and 576-wide pictures are centred (§7.6) | the host engine: every demo and every map of the four IWADs and both PWADs, 2026-11-06; the 1.9 IWADs the same, 2026-11-07 | confirmed on the host | Confirmed 2026-11-06, M2; the device in M3 |
+| A 3 MB zone holds every map of the commercial IWADs | yes: 0.8 MB left at worst (No Rest for the Living MAP04), 1.4 MB on the IWADs, 1.9 or re-release | the host engine, every map (§12.2) | confirmed on the host | Confirmed 2026-11-07, M2; card reads in play on the device, M5 |
 | SRAM left after the port, with `I_VideoBuffer` in SRAM and the directory in PSRAM | ~40 KB | §12.1's estimate on §3.4's build | medium | M0, M5 |
 | Core 0's default stack is enough for Doom | yes: 2,004 of 3,072 B under Doom II's demos | M1, painted | medium: 1 KB to spare | M3–M5, on the big maps |
-| Upstream's renderer changes do not desync vanilla demos | yes | not checked | medium | M2 |
+| Upstream's renderer changes do not desync vanilla demos | yes | the host engine: all 19 demos play to their ends, with kills and items of real play; not yet compared exactly with stock doomgeneric | high | M2's exact comparison, when the owner allows it |
 | POWMAN timer unaffected by the move to 300 MHz | yes: 2 ms across 1.5–2.0 ms | M1, both boards (HW §1.2) | confirmed | Confirmed 2026-11-06, M1 |
 | The image fits UF2 Loader's partition | yes; 563 KB upstream | §3.4; HW §2.7 | high | M10 |
 

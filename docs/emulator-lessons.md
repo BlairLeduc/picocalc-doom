@@ -1598,6 +1598,48 @@ environment variable the harness reads.
 its character set, is how a host test, a scripted device run (§13.1) and a
 person over a serial line all read what the ROM printed.
 
+**A frame-hash list for a ported game engine** (a source port, not an
+emulator; learned porting Doom, 2026-11). Hash each frame the engine hands
+the platform, pixels then palette, under the engine's own deterministic
+replay mode, and keep the list as the device's reference. Three things make
+it reproducible:
+
+- *One hash per game tic, the last frame drawn in it.* Even a replay mode
+  that runs one tic per frame draws extra frames during a screen
+  transition, as many as real time allows; the last of them is the finished
+  transition, the same on any machine.
+- *Find the frames that read memory nobody wrote.* Run the replay several
+  times with the engine's heap filled with a different byte and moved to a
+  different base each time; a tic whose hash changes read uninitialised
+  memory or an allocator's block header (pointers). Mark those tics
+  unstable and skip them in the comparison; they cannot match the device.
+  Doom's sprite drawer reads past small patches by design, so a handful of
+  such frames is normal, not a fault.
+- *Check that the list reproduces before trusting a mismatch.* The first
+  runs of a list that differs on every frame are a defect to find (here, an
+  undrawn status bar showing the heap), not noise to tolerate.
+- *Tie the list to the data it was made from.* Put the data file's hash in
+  the list's header and have the test skip, saying so, on any other file:
+  a different release of the same game draws other pictures, and every
+  frame differs for no fault of the engine.
+
+**Count the reads the device would make.** Compile the engine's own file
+layer for the host with its read call renamed (`-Dfread=counted_fread` on
+that one file) to a counter: an exact count of what would be card reads,
+with no patch to the engine. Sampling the cache instead (lump pointers set
+or cleared between frames) misses what is loaded and dropped within a
+frame, and gave counts that *rose* with a larger cache.
+
+**Re-released game data is not the original data.** A modern re-release
+may keep the old file format and change the contents: the 2024 Doom
+re-release's full-screen pictures are 560 pixels wide for widescreen,
+where every vanilla engine expects 320. Run the owner's actual files on the
+host harness before the device ever sees them. A purchase of a re-release
+may also carry the original data (Doom's carries its DOS 1.9 files):
+look through what the installer extracts before choosing the reference.
+Demos are a cheap cross-check between two releases: the same demo should
+end on the same tic with the same score on both.
+
 ### 11.3 Media round trips by the ROM itself
 
 For tape: record what the ROM's own `SAVE` drives onto the output bit, decode
