@@ -1506,6 +1506,24 @@ alongside the MCU's source above.
 - **Each FIFO read took 4.82–4.92 ms** (an empty read 4,823 µs, 50 a second
   with nothing else on the core), with no failed transaction in 693 s.
 
+**2026-11-07, Pimoroni Pico Plus 2 W in a PicoCalc, 300 MHz, a game
+playing with full 320×240 frames sent to the LCD at 75 MHz SPI (about 20 ms
+each) on the same core as the keyboard poll; measured from UART logs over
+1,009 s of play by hand, two boots.**
+
+- **Polling between whole-frame sends, the FIFO was read 32–50 times a
+  second, median 36**, against a 20 ms (50 Hz) schedule: each send is
+  followed by one poll. Each read took **4.88 ms**. No failed I²C
+  transaction in the session.
+- **Read to use**: an event waited a median of 15 ms (p90 21 ms) from its
+  FIFO read to being taken by the game, and a press reached the next frame
+  sent a median of 30 ms after its read (p90 46 ms, longest 93 ms); the
+  MCU's own scan comes before all of it. The player, using arrows, Ctrl,
+  Space, Alt and `,` `.`, found the keys responsive at that rate.
+- **Caps Lock works as a toggle key**: each tap is one press (state 1) and
+  one release (state 3), with no repeats; four taps in play gave four
+  presses.
+
 ---
 
 ## 7. Storage

@@ -75,13 +75,14 @@ Build each variant in its own directory.
 - **D7** 300 MHz at 1.20 V (revisited at the M5 gate).
 - **D8** Start from `picocalc-quest`'s PicoCalc layer: copy, rename, re-verify.
 - **D9** The port's code is GPL-2.0-or-later (`SPDX-License-Identifier` in every file).
+- **D12** The key map of §9.2; running always on, Caps Lock toggles it; Shift bound to nothing.
 - **D13** The port draws its own WAD list; straight into the game with one IWAD or `iwad =`.
 - **D16** GitHub `BlairLeduc/picocalc-doom`; one branch and pull request per milestone, CI green.
 
-Proposed decisions (D10, D11, D14, D15) need the owner's word before the
-milestone that depends on them. D12 (the key map) is accepted for M4 and
-settled by play-testing in M7; D14's Esc in the WAD list is settled, Doom's
-Quit is not.
+Proposed decisions (D10, D14, D15) need the owner's word before the
+milestone that depends on them. D14's Esc in the WAD list is settled, Doom's
+Quit is not; D15's `picocalc.ini` `args` is accepted (M7), the shell's
+arguments are not.
 
 ## Hardware notes (D6)
 

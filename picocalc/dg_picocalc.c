@@ -6,8 +6,10 @@
  * Upstream's behaviour less HDMI, PS/2 and USB. main() has started and
  * checked the PSRAM by the time DG_Init() runs (§11.3, M1). DG_Init()
  * sets up the frame pool (§7.2) and checks the card, with a page for each
- * failure (§13.1); DG_StartScreen() starts the IWAD, from the WAD list
- * when there is more than one (§13.1, D13); I_Error() shows its page and
+ * failure (§13.1), and reads picocalc.ini (§10.3); DG_StartScreen()
+ * starts the IWAD, from the WAD list when there is more than one and the
+ * settings name none (§13.1, D13), with the settings' args (D15);
+ * I_InitJoystick() applies the run setting (§9.4); I_Error() shows its page and
  * starts again on a key. The at-exit list and Doom's Quit to the shell
  * (§13.3) replace the marked parts in M8.
  *
@@ -34,6 +36,7 @@
 #include "page.h"
 #include "picocalc_shell.h"
 #include "psram_allocator.h"
+#include "settings.h"
 #include "video.h"
 
 #include <stdarg.h>
@@ -150,6 +153,7 @@ void DG_Init(void)
     check_card();
     f_chdir("/doom");
     stdio_fatfs_init();
+    settings_load();
 }
 
 /* The IWADs of Doom's own table (d_iwad.c) that this engine plays: Doom's
@@ -228,13 +232,38 @@ static unsigned choose_iwad(const unsigned *found, unsigned n)
     return found[sel];
 }
 
-/* Which IWAD to start (§13.1, D13): the build's -iwad if it names one;
- * the only one when the card has one; otherwise the one chosen from the
- * WAD list. M7 adds picocalc.ini's iwad. */
+/* picocalc.ini's iwad among those found, or -1, with the line refused
+ * if it names one that is not there (§10.3). */
+static int settings_iwad(const unsigned *found, unsigned n_found)
+{
+    if (g_settings.iwad[0] == '\0') {
+        return -1;
+    }
+    for (unsigned i = 0; i < n_found; i++) {
+        if (strcmp(s_iwads[found[i]].file, g_settings.iwad) == 0) {
+            return (int)found[i];
+        }
+    }
+    for (unsigned i = 0; i < IWADS; i++) {
+        if (strcmp(s_iwads[i].file, g_settings.iwad) == 0) {
+            settings_refuse(g_settings.iwad_line, "that IWAD is not in /doom");
+            return -1;
+        }
+    }
+    settings_refuse(g_settings.iwad_line, "not an IWAD this port plays");
+    return -1;
+}
+
+/* Which IWAD to start (§13.1, D13): an -iwad in the build's arguments or
+ * picocalc.ini's args; picocalc.ini's iwad; the only one when the card
+ * has one; otherwise the one chosen from the WAD list. Doom's arguments
+ * are the build's, then -iwad, then picocalc.ini's args (D15). */
 void DG_StartScreen(void)
 {
     static char build_args[] = PICOCALC_DOOM_ARGS;
+    static char ini_args[SETTINGS_ARGS_MAX];
     static char *args[MAX_ARGS + 1];
+    char *extra[MAX_ARGS];
     unsigned found[IWADS], n_found = 0;
     int n = 0;
 
@@ -252,20 +281,32 @@ void DG_StartScreen(void)
     }
 
     args[n++] = "doom";
-    int build_first = n;
     n = split_args(build_args, args, n);
-    boolean build_iwad = false;
-    for (int i = build_first; i < n; i++) {
-        if (strcmp(args[i], "-iwad") == 0) {
-            build_iwad = true;
-        }
+    memcpy(ini_args, g_settings.args, sizeof ini_args);
+    int n_extra = split_args(ini_args, extra, 0);
+    boolean named = false;
+    for (int i = 1; i < n; i++) {
+        named |= strcmp(args[i], "-iwad") == 0;
     }
-    if (!build_iwad && n + 2 <= MAX_ARGS) {
-        unsigned chosen = n_found == 1 ? found[0] : choose_iwad(found, n_found);
+    for (int i = 0; i < n_extra; i++) {
+        named |= strcmp(extra[i], "-iwad") == 0;
+    }
+    if (!named && n + 2 <= MAX_ARGS) {
+        int ini = settings_iwad(found, n_found);
+        unsigned chosen = ini >= 0 ? (unsigned)ini
+                        : n_found == 1 ? found[0] : choose_iwad(found, n_found);
         args[n++] = "-iwad";
         args[n++] = (char *)s_iwads[chosen].file;
         FRANK_DOOM_LOG("  iwad         : starting %s, %s\n", s_iwads[chosen].file,
-                       n_found == 1 ? "the only one" : "chosen from the list");
+                       ini >= 0 ? "picocalc.ini's" : n_found == 1 ? "the only one"
+                       : "chosen from the list");
+    }
+    for (int i = 0; i < n_extra; i++) {
+        if (n == MAX_ARGS) {
+            FRANK_DOOM_LOG("  arguments    : more than %d; the rest dropped\n", MAX_ARGS);
+            break;
+        }
+        args[n++] = extra[i];
     }
     args[n] = NULL;
 
@@ -422,8 +463,15 @@ void I_Init(void)
     I_InitGraphics();
 }
 
+/* Doom calls this after M_LoadDefaults(), so what is set here wins over
+ * default.cfg: the run setting, as a shim, not the d_main.c hunk §9.4
+ * first planned (§5.3). Doom's first frame is near, so a settings line
+ * not used is named in the band now; core 1 shows it once the bands are
+ * clear. */
 void I_InitJoystick(void)
 {
+    settings_apply_run();
+    settings_announce();
 }
 
 void I_BindJoystickVariables(void)

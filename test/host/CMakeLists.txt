@@ -48,3 +48,12 @@ target_compile_definitions(test_audio_stage PRIVATE PICOCALC_DOOM_HOST=1)
 target_compile_options(test_audio_stage PRIVATE ${PICOCALC_DOOM_WARNINGS})
 target_link_libraries(test_audio_stage PRIVATE m)
 add_test(NAME test_audio_stage COMMAND test_audio_stage)
+
+# picocalc.ini: every setting, bad lines named and the rest applied, and
+# the run key against the key map's bindings (§10.3, §9.2).
+add_executable(test_settings test_settings.c ${PROJECT_SOURCE_DIR}/picocalc/settings.c
+    ${PROJECT_SOURCE_DIR}/picocalc/keymap.c)
+target_include_directories(test_settings PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
+target_compile_definitions(test_settings PRIVATE PICOCALC_DOOM_HOST=1)
+target_compile_options(test_settings PRIVATE ${PICOCALC_DOOM_WARNINGS})
+add_test(NAME test_settings COMMAND test_settings)

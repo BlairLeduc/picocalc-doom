@@ -9,7 +9,7 @@
 #   KEYS_GAP=0.2 scripts/keys.sh down down   # seconds between keys
 #
 # Names: up down left right enter esc tab bs del space home end pgup pgdn
-# ins break f1..f10, and a single printable character. A chord joins
+# ins break caps f1..f10, and a single printable character. A chord joins
 # ctrl, alt, shift and one key with +. hold:NAME then SECONDS sends the
 # press, waits, and sends the release; the MCU's repeats are not sent.
 # wait:SECONDS pauses. restart restarts the program, as a card change
@@ -62,7 +62,7 @@ code() {
         enter) echo 0a ;; esc) echo b1 ;; tab) echo 09 ;; bs) echo 08 ;;
         del) echo d4 ;; space) echo 20 ;; home) echo d2 ;; end) echo d5 ;;
         pgup) echo d6 ;; pgdn) echo d7 ;; ins) echo d1 ;; break) echo d0 ;;
-        ctrl) echo a5 ;; alt) echo a1 ;; shift) echo a2 ;;
+        ctrl) echo a5 ;; alt) echo a1 ;; shift) echo a2 ;; caps) echo c1 ;;
         f[1-9]) printf '%02x\n' $((0x80 + ${1#f})) ;;
         f10) echo 90 ;;
         ?) printf '%02x\n' "'$1" ;;

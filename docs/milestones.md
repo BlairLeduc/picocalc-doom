@@ -4,6 +4,87 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M7: controls and settings
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
+flashed over SWD with `scripts/flash.sh`; development build, Arm GCC
+15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V; UART0 captured. The card held
+the original 1.9 IWADs (design.md §10.4). Before the work the owner
+accepted D15 for `picocalc.ini`'s `args` and asked for Caps Lock to toggle
+running. Built, run and read by Claude; played by the owner.
+
+### Done when
+
+| Check | Result |
+|---|---|
+| A full episode-1 level played comfortably on the keyboard | **passed**, the owner, The Ultimate Doom, 1,009 s over two boots |
+| The bindings recorded as D12's settlement | **the bindings as they were** (design.md §9.2), always-run on with Caps Lock toggling it, the poll as it was: D12 **settled** |
+| A settings file with a bad line boots with the line named and the rest applied | **passed**: `iwad = doom.wad`, `run = sometimes`, `args = -skill 4`; logged "line 2 not used, always, hold or off", Doom started at once from `iwad` with `-iwad doom.wad -skill 4`, running always; the owner saw the line named in the bottom band |
+| Key-to-motion latency at the settled poll rate | a press to the next frame published a median of **30 ms** after its FIFO read (p90 46 ms, longest 93 ms; 575 presses), against M4's 39 / 52 / 109 ms; FIFO read to `DG_GetKey()` a median of 15 ms (p90 21 ms) |
+
+### The settings and the run
+
+| Check | Result |
+|---|---|
+| No `picocalc.ini` | "no /doom/picocalc.ini; the defaults", the WAD list, running always |
+| The run setting | `I_InitJoystick()`, after `M_LoadDefaults()`: `joyb_speed` 31 and `key_speed` Shift (182), which the key map never sends. **No patch hunk** (design.md §9.4) |
+| Caps Lock | over the UART and by the owner: each press toggles, releases ignored, "running off" / "running always" logged |
+| Host tests | **9 of 9**, with `test_settings`: each setting in any case, eight bad lines named in order with why and the rest applied, comments, a BOM, CRLF, a last line with no end, the later line winning, `run = hold` without `run_key`, and the run key against every binding in `keymap_bindings`, Doom's own keys and every Shift-only character. Mutations to the parser (a Doom key dropped, the bindings check removed, error recording removed) each fail it |
+| `check_sources.sh` | passed |
+| Release build | builds; not run on the device |
+
+### The owner's play
+
+1,009 s over two boots. In play (902 s with 25 or more frames presented a
+second): core 0 busy 93.6 % mean, 36.5 presented a second. The keyboard
+polled 32–50 times a second in play, median 36, 4.88 ms a read; 32
+releases held over to the next tic (§9.1); I²C errors 0; no unknown codes.
+Stacks: core 0 2,016 of 3,072 B, core 1 1,084 of 2,048 B. **Heap 5,056 of
+9,152 B.**
+
+**The code**: `settings.c` (Quest's parser, Doom's keys, the file read
+into the PSRAM and let go, the run variables and Caps Lock), `status.c`
+(Quest's band, which waits for a page to close and the bands to clear
+rather than dropping a message), `test_settings.c`; `DG_Init()` reads the
+settings, `DG_StartScreen()` takes `iwad` and `args`, `I_InitJoystick()`
+applies the run, `input_shim.c` passes Caps Lock on. `keys.sh` learns
+`caps`. **The patch** is unchanged.
+
+### Sizes
+
+| | M6, development | M7, development | M7, release |
+|---|---:|---:|---:|
+| `.text` | 297,272 | 302,824 | 277,136 |
+| `.rodata` | 141,508 | 143,436 | 135,436 |
+| Image (`.bin`) | 531,696 | 539,176 | 505,464 |
+| `.data` | 91,836 | 91,836 | 91,812 |
+| `.bss` | 416,352 | 416,832 | 412,684 |
+| SRAM left for the heap | 9,632 | **9,152** | about 13,300 |
+
+### Found
+
+- **The run setting needs no patch**: Doom calls the port's
+  `I_InitJoystick()` after loading `default.cfg`, so the port's choice is
+  set there and wins (design.md §9.4, §5.3).
+- **The poll rate is fine as it is**: 36 a second in play, from one poll
+  after each 20 ms present; the owner found the keys responsive, so
+  polling between the present's rows is not needed (hardware-notes.md §6).
+- **Key to frame is faster than M4's** (median 30 ms against 39 ms), with
+  the OPL now on core 1 and the frames steadier at 35.
+- **A 2 KB text buffer is too dear in SRAM** with 9.6 KB of heap left; the
+  file is read into the PSRAM instead.
+
+### Not checked
+
+- `run = hold` with a `run_key`, and whether the MCU delivers a letter held
+  with an arrow.
+- Caps Lock's "Always running" and "Walking" in the band, on the panel (the
+  toggle itself was logged).
+- An `iwad =` naming an IWAD not on the card, and an `-iwad` inside `args`
+  (in code, not run).
+- The release build on a device; the Plus 2.
+- Doom II, Final Doom, Freedoom with the settings file.
+
 ## M6: audio
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
