@@ -1,11 +1,11 @@
-/* page.h — the pages shown when something Doom needs is missing
- * (design.md §13.1, EL §8.1): never a blank screen.
+/* page.h — the port's own pages (design.md §13.1, §13.3, EL §8.1): the
+ * WAD list, the way out, and a page for each failure, so never a blank
+ * screen.
  *
- * Core 0 finds the failure and names the page; core 1, which owns the
- * LCD, draws it over the whole panel in the 8x10 font and leaves it
- * there, presenting no frames over it. The PSRAM's page cannot go
- * through the frame pool, which lives in the PSRAM, so all of them are
- * drawn this way.
+ * Core 0 names the page; core 1, which owns the LCD, draws it over the
+ * whole panel in the 8x10 font and leaves it there, presenting no frames
+ * over it. The PSRAM's page cannot go through the frame pool, which
+ * lives in the PSRAM, so all of them are drawn this way.
  *
  * From picocalc-quest's page.c (D8), with Doom's pages.
  *
@@ -25,6 +25,9 @@ typedef enum {
     PAGE_NO_IWAD,      /* /doom holds no IWAD Doom knows             */
     PAGE_STOPPED,      /* the port could not start Doom; a message   */
     PAGE_DOOM_ERROR,   /* Doom's I_Error() ended the game; a message */
+    PAGE_WAD_LIST,     /* the IWADs to choose from (D13)             */
+    PAGE_TO_SHELL,     /* leaving to the shell (§13.3)               */
+    PAGE_POWER_OFF,    /* the southbridge is switching off (§13.3)   */
 } page_t;
 
 /* The longest message a page shows; longer is cut. */
@@ -37,9 +40,25 @@ void page_show(page_t p);
  * width. The message is copied. */
 void page_show_message(page_t p, const char *message);
 
-/* Core 1: the page core 0 asked for, and drawing it. */
+/* The WAD list's most entries, and the longest. */
+#define PAGE_LIST_MAX  10
+#define PAGE_LIST_COLS 40
+
+/* Core 0: show the WAD list, its entries copied, `selected` highlighted,
+ * and `esc` saying where Esc goes (NULL: nowhere). */
+void page_show_list(const char *const *entries, unsigned n, unsigned selected,
+                    const char *esc);
+
+/* Core 0: move the WAD list's highlight. */
+void page_list_select(unsigned selected);
+
+/* Core 1: the page core 0 asked for, and drawing it; and a count that
+ * moves when the page's contents change without the page changing (the
+ * list's highlight), for page_refresh. */
 page_t page_wanted(void);
+uint32_t page_generation(void);
 void page_draw(page_t p);
+void page_refresh(page_t p);
 
 /* Core 1: one line of text at y, centred, FONT_H rows of pixels, over a
  * full-width background; longer than the panel is cut. */

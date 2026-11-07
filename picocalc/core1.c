@@ -1,5 +1,5 @@
 /* core1.c — core 1's loop: the presenter, the pages, the southbridge
- * and the log (design.md §6.1, §7.4, §13.1, §14.3).
+ * and the log (design.md §6.1, §7.4, §9.1, §13.1, §14.3).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -15,6 +15,8 @@
 
 #include "board.h"
 #include "framepool.h"
+#include "input.h"
+#include "kbd.h"
 #include "lcd.h"
 #include "log.h"
 #include "page.h"
@@ -22,8 +24,7 @@
 #include "video.h"
 
 /* The battery is refreshed by the MCU every 20 s (hardware-notes.md §6);
- * once a second is plenty. Until M4 polls the keyboard, the battery read
- * is what keeps the MCU's bus watchdog fed (§6.1). */
+ * once a second is plenty. */
 #define BAT_POLL_US   1000000u
 #define HEARTBEAT_US  1000000u
 
@@ -45,6 +46,20 @@ volatile uint32_t g_core0_stack;
 #define PUMP_ROWS 16u
 
 static volatile bool s_park, s_parked;
+
+/* Core 0's request to power off (§13.3), done between two of the
+ * keyboard's transactions: the seconds, and the answer. */
+static volatile uint8_t s_power_off;
+static volatile int s_power_off_result;
+
+bool core1_power_off(uint8_t seconds) {
+    s_power_off_result = 0;
+    __dmb();
+    s_power_off = seconds;
+    uint32_t t0 = time_us_32();
+    while (s_power_off_result == 0 && time_us_32() - t0 < 200000u) tight_loop_contents();
+    return s_power_off_result > 0;
+}
 
 void core1_park(void) {
     s_park = true;
@@ -229,14 +244,17 @@ void core1_main(void) {
 
     bool bands_cleared = false;
     page_t page = PAGE_NONE;
+    uint32_t page_gen = page_generation();
     int battery = -1, temp_c = board_temp_c();
     uint32_t now = time_us_32();
-    uint32_t next_bat = now, next_beat = now + HEARTBEAT_US;
+    uint32_t next_bat = now, next_kbd = now, next_beat = now + HEARTBEAT_US;
+    uint32_t poll_us = 0, polls = 0;
     uint32_t seconds = 0, loops = 0;
     uint32_t last_sleep = g_core0_sleep_us, last_frames = g_core0_frames;
     uint32_t last_pub = 0, last_drop = 0;
     present_stats_t last_present = s_present;
     video_stats_t last_video = g_video;
+    input_stats_t last_input = g_input;
     for (;;) {
         log_pump();
         loops++;
@@ -247,14 +265,26 @@ void core1_main(void) {
             for (;;) tight_loop_contents();
         }
 
+        /* The power off asked for by core 0's exit (§13.3), between two
+         * of the keyboard's transactions. */
+        if (s_power_off != 0) {
+            s_power_off_result = sb_write(SB_REG_OFF, s_power_off, NULL) == SB_OK ? 1 : -1;
+            s_power_off = 0;
+        }
+
         /* A page (§13.1) covers the panel and stays; nothing is
-         * presented over it. */
+         * presented over it. The WAD list redraws its entries when the
+         * highlight moves. */
         page_t wanted = page_wanted();
+        uint32_t gen = page_generation();
         if (wanted != page) {
             page = wanted;
             page_draw(page);
             bands_cleared = false;
+        } else if (gen != page_gen) {
+            page_refresh(page);
         }
+        page_gen = gen;
 
         int frame = video_take();
         if (frame >= 0 && page != PAGE_NONE) {
@@ -272,6 +302,18 @@ void core1_main(void) {
             }
             present(frame);
             video_release(frame);
+        }
+
+        /* The keyboard (§9.1): the MCU's FIFO every KBD_POLL_US, between
+         * presents, and in the development build the UART's keys every
+         * loop (§14.1). */
+        kbd_uart();
+        now = time_us_32();
+        if ((int32_t)(now - next_kbd) >= 0) {
+            next_kbd = now + KBD_POLL_US;
+            kbd_poll();
+            poll_us += time_us_32() - now;
+            polls++;
         }
 
         now = time_us_32();
@@ -298,6 +340,9 @@ void core1_main(void) {
             uint32_t busy = idle >= HEARTBEAT_US ? 0 : 1000u - idle / (HEARTBEAT_US / 1000u);
             uint32_t n_fin = v.finishes - last_video.finishes;
             uint32_t n_pres = ps.presents - last_present.presents;
+            input_stats_t in = g_input;
+            uint32_t n_taken = in.taken - last_input.taken;
+            uint32_t n_frame = in.frame_n - last_input.frame_n;
             printf("hb %lu: core 0 busy %lu.%lu%%, frames %lu, published %lu, presented %lu, "
                    "dropped %lu; copy %lu us (max %lu), publish %lu us (max %lu), "
                    "present %lu us (max %lu), margins %lu; stacks: core 0 %lu of %lu B, "
@@ -319,6 +364,24 @@ void core1_main(void) {
                    battery >= 0 && (battery & 0x80) ? " charging" : "",
                    (unsigned long)sb_error_count(), (unsigned long)log_dropped(),
                    (unsigned long)loops);
+            /* The keyboard's line (M4): pairs read and taken, their wait in
+             * the ring, a press to the first frame after Doom took it,
+             * releases I_GetEvent() left to the next tic (§9.1), and the
+             * poll's own cost on core 1. */
+            printf("hb %lu keys: read %lu, ring full %lu; taken %lu, wait %lu us (max %lu), "
+                   "events %lu, repeats %lu, stray %lu, unknown %lu, held over %lu; "
+                   "key to frame %lu us (max %lu); polls %lu, %lu us each\n",
+                   (unsigned long)seconds, (unsigned long)kbd_events(),
+                   (unsigned long)kbd_overflows(), (unsigned long)n_taken,
+                   (unsigned long)(n_taken ? (in.wait_sum_us - last_input.wait_sum_us) / n_taken : 0),
+                   (unsigned long)in.wait_max_us, (unsigned long)(in.events - last_input.events),
+                   (unsigned long)in.repeats, (unsigned long)in.stray, (unsigned long)in.unknown,
+                   (unsigned long)in.held_over,
+                   (unsigned long)(n_frame ? (in.frame_sum_us - last_input.frame_sum_us) / n_frame : 0),
+                   (unsigned long)in.frame_max_us, (unsigned long)polls,
+                   (unsigned long)(polls ? poll_us / polls : 0));
+            last_input = in;
+            poll_us = polls = 0;
             last_sleep = sleep;
             last_frames = frames;
             last_pub = pub;
