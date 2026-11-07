@@ -1531,7 +1531,9 @@ recorded. **Measured**: fps per demo, busy share per level, the profile.
 
 **Done when** effects and OPL music play correctly by ear (pitch, speed,
 no carrier whine) in E1M1 and a Doom II map if owned, through the speakers
-and the headphone jack. **Measured**: mixing's share of core 0 per tic with
+and the headphone jack. (Met 2026-11-07. The gate with audio: 41.6, 43.8, 45.8
+and 32.1 fps for The Ultimate Doom's four demos; the owner accepted demo
+4's 32, and the copy by DMA stays M9's first lever.) **Measured**: mixing's share of core 0 per tic with
 music; underruns over ten minutes of play and across level loads; the gate
 again, `-timedemo` with audio on.
 

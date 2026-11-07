@@ -21,7 +21,7 @@ by the owner throughout, and the play test played by the owner.
 | Effects and OPL music by ear in E1M1 (The Ultimate Doom) and MAP01 (Doom II): pitch, speed, no carrier whine | **passed**, the owner, through the speakers and through the headphone jack |
 | Underruns over ten minutes of play and across level loads | 1,050 s of play over two boots: **47 slots** underrun after the first was played (most at the level loads, each a slot of 1,421 frames), 2 late halves from core 1; no late refills |
 | Mixing's share of core 0 with music | upstream unchanged: 22–28 %; as kept, with the OPL on core 1: **4–5 %** (the effects mixer); the OPL takes 16–35 % of core 1, in the LCD's waits (design.md §8.4) |
-| The gate again, `-timedemo` with audio | demo 1 **41.6**, demo 2 **43.8**, demo 3 **45.8**, demo 4 **32.1** fps (M5 without audio: 46.4, 48.0, 50.2, 35.7). **Demo 4 is below 35** (Found) |
+| The gate again, `-timedemo` with audio | demo 1 **41.6**, demo 2 **43.8**, demo 3 **45.8**, demo 4 **32.1** fps (M5 without audio: 46.4, 48.0, 50.2, 35.7). Demo 4 is below 35; **accepted by the owner**, 2026-11-07 (Found) |
 | The late path forced (EL §6.4) | `PICOCALC_DOOM_AUDIO_STALL=30`: core 0's interrupts masked 30 ms every 5 s through music, 11 stalls: **2 late refills a stall**, no storm, no underrun, 96–99 refills a second throughout |
 
 ### The output
@@ -107,7 +107,8 @@ read Doom's unsigned 8-bit sound lumps as signed (Found). Switches:
 - **Demo 4 falls below the gate with audio**, 32.1 fps: audio still
   costs core 0 about 6 % (the effects mixer and the interrupt), and
   demo 4's M5 margin was 2 %. The copy into the pool (6.2 ms a frame) is
-  still the largest lever (M9, strategy C).
+  still the largest lever (M9, strategy C). **The owner accepted 32 fps for
+  demo 4 with audio** (2026-11-07); the copy by DMA stays M9's.
 - **The heap is down to 9.6 KB, with 5.5 KB used**: the SRAM code costs
   24 KB of it. A PWAD that needs more heap would fail; `MIX_SRAM` off
   gives back 24 KB, at a cost to core 0 (the effects mixer) and core 1
