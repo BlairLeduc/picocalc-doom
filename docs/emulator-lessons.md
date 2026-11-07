@@ -1618,6 +1618,10 @@ it reproducible:
 - *Check that the list reproduces before trusting a mismatch.* The first
   runs of a list that differs on every frame are a defect to find (here, an
   undrawn status bar showing the heap), not noise to tolerate.
+- *Tie the list to the data it was made from.* Put the data file's hash in
+  the list's header and have the test skip, saying so, on any other file:
+  a different release of the same game draws other pictures, and every
+  frame differs for no fault of the engine.
 
 **Count the reads the device would make.** Compile the engine's own file
 layer for the host with its read call renamed (`-Dfread=counted_fread` on
@@ -1630,7 +1634,11 @@ frame, and gave counts that *rose* with a larger cache.
 may keep the old file format and change the contents: the 2024 Doom
 re-release's full-screen pictures are 560 pixels wide for widescreen,
 where every vanilla engine expects 320. Run the owner's actual files on the
-host harness before the device ever sees them.
+host harness before the device ever sees them. A purchase of a re-release
+may also carry the original data (Doom's carries its DOS 1.9 files):
+look through what the installer extracts before choosing the reference.
+Demos are a cheap cross-check between two releases: the same demo should
+end on the same tic with the same score on both.
 
 ### 11.3 Media round trips by the ROM itself
 
