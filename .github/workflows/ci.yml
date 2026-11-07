@@ -71,7 +71,9 @@ jobs:
 
       # The gate's switches (§16 M5), so the controls and levers keep
       # building: strategy A, the colormaps and drawers in SRAM, the frame
-      # hashes and a frame dump. Not uploaded.
+      # hashes and a frame dump; and the audio's (§8.3, M6): the OPL in the
+      # game loop, the mixer from flash, upstream's assembly renderer and
+      # the late-path stall. Not uploaded.
       - name: Build the levers and the hashes
         env:
           PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
@@ -79,7 +81,9 @@ jobs:
           cmake -S . -B build/pico-levers -DCMAKE_BUILD_TYPE=Release \
             -DPICOCALC_DOOM_VIDEO_BUF=A -DPICOCALC_DOOM_COLORMAPS_SRAM=ON \
             -DPICOCALC_DOOM_DRAWERS_SRAM=ON -DPICOCALC_DOOM_FRAME_HASHES=ON \
-            -DPICOCALC_DOOM_FRAME_DUMP_TIC=100
+            -DPICOCALC_DOOM_FRAME_DUMP_TIC=100 \
+            -DPICOCALC_DOOM_OPL_CORE1=OFF -DPICOCALC_DOOM_MIX_SRAM=OFF \
+            -DPICOCALC_DOOM_OPL_ASM=ON -DPICOCALC_DOOM_AUDIO_STALL=30
           cmake --build build/pico-levers -j "$(nproc)"
 
       - uses: actions/upload-artifact@v4

@@ -151,3 +151,18 @@
      lumpinfo = newlumpinfo;
      numlumps = newnumlumps;
  }
+--- a/src/pico/i_picosound.c
++++ b/src/pico/i_picosound.c
+@@ -286,8 +286,11 @@
+             channel->decompressed_size = block_size;
+             assert(channel->decompressed_size && channel->decompressed_size <= sizeof(channel->decompressed));
+             const uint8_t *src = channel->data;
++            // picocalc-doom: Doom's DMX sound lumps are unsigned 8-bit, 128
++            // the silence; read as signed, a quiet stretch about 128 swings
++            // full scale, a buzz under every effect (design.md §8.2).
+             for (int i = 0; i < block_size; ++i) {
+-                channel->decompressed[i] = (int8_t)src[i];
++                channel->decompressed[i] = (int8_t)(src[i] ^ 0x80);
+             }
+             channel->data += block_size;
+         }

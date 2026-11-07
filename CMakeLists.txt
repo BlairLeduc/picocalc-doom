@@ -96,10 +96,26 @@ else()
     option(PICOCALC_DOOM_COLORMAPS_SRAM "the light tables in SRAM" ON)
     # The third: the column and span drawers in SRAM (cmake/sram_sections.cmake).
     option(PICOCALC_DOOM_DRAWERS_SRAM "Doom's column and span drawers in SRAM" OFF)
+    # §8.3's first audio lever (M6): upstream's effects mixer and EMU8950's
+    # slot renderer and buffer loop in SRAM, out of the XIP cache Doom's
+    # renderer needs.
+    option(PICOCALC_DOOM_MIX_SRAM "the mixer and OPL renderer in SRAM" ON)
+    # The second: upstream's own Thumb renderer for EMU8950
+    # (src/opl/slot_render_pico.S, written for the RP2040), in place of its C.
+    # The audio lever M6 kept: EMU8950 rendered on core 1, its register
+    # writes queued by core 0's sequencer (picocalc/opl_core1.c, §8.3).
+    option(PICOCALC_DOOM_OPL_CORE1 "the OPL emulator on core 1" ON)
+    option(PICOCALC_DOOM_OPL_ASM "the OPL emulator's assembly renderer" OFF)
     # The flash at 300 MHz (§11.1, §11.4): picocalc-quest's qualified
     # divider 4, RX delay 4, 75 MHz. 0 is the bootrom's timing doubled.
     set(PICOCALC_DOOM_FLASH_DIV 4 CACHE STRING "flash QMI divider at 300 MHz, 0 the bootrom's doubled")
     set(PICOCALC_DOOM_FLASH_RXDELAY 4 CACHE STRING "flash QMI RX delay with FLASH_DIV")
+    # The scratch build that forces the audio's late path (§16 M6, EL §6.4):
+    # core 0's interrupts masked this many ms every five seconds; 0, never.
+    # The audio's gain over upstream's mix, which peaks near 1,500 of
+    # 32,768 (§8.1, M6); saturated, not wrapped.
+    set(PICOCALC_DOOM_AUDIO_GAIN 8 CACHE STRING "audio gain over upstream's mix, 1-16")
+    set(PICOCALC_DOOM_AUDIO_STALL 0 CACHE STRING "ms core 0's interrupts are masked every 5 s (scratch)")
 
     # Upstream's version, for its own logs: version.txt is "MAJOR MINOR",
     # joined with a dot, as upstream does.
@@ -119,6 +135,7 @@ else()
     # built as it comes.
     set(PICOCALC_DOOM_SOURCES
         picocalc/audio_shim.c
+        picocalc/audio_stage.c
         picocalc/board.c
         picocalc/clock.c
         picocalc/core1.c
@@ -133,6 +150,7 @@ else()
         picocalc/lcd.c
         picocalc/log.c
         picocalc/main.c
+        picocalc/opl_core1.c
         picocalc/page.c
         picocalc/psram_check.c
         picocalc/render_sram.c
@@ -141,6 +159,10 @@ else()
     )
     set_source_files_properties(${PICOCALC_DOOM_SOURCES} PROPERTIES
         COMPILE_OPTIONS "${PICOCALC_DOOM_WARNINGS}")
+    # The audio refill path's loops stay loops: GCC would otherwise turn
+    # them into calls to the library's memcpy and memset, in flash (§8.2).
+    set_property(SOURCE picocalc/audio_shim.c picocalc/audio_stage.c APPEND
+        PROPERTY COMPILE_OPTIONS -fno-tree-loop-distribute-patterns)
 
     # Upstream's s_sound.c traces every sound and song in a dozen printf
     # lines, and wi_stuff.c every frame of the intermission: more than
@@ -183,6 +205,54 @@ else()
             VERBATIM)
     endif()
 
+    if (PICOCALC_DOOM_MIX_SRAM)
+        add_custom_command(TARGET picocalc-doom PRE_LINK
+            COMMAND ${CMAKE_COMMAND}
+                -DOBJDIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/picocalc-doom.dir
+                -DOBJCOPY=${CMAKE_OBJCOPY}
+                -DFILES=slot_render.cpp
+                -DFUNCS=ALL
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sram_sections.cmake
+            COMMAND ${CMAKE_COMMAND}
+                -DOBJDIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/picocalc-doom.dir
+                -DOBJCOPY=${CMAKE_OBJCOPY}
+                -DFILES=emu8950.c
+                -DFUNCS=OPL_calc_buffer_linear,OPL_calc_buffer_stereo
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sram_sections.cmake
+            COMMAND ${CMAKE_COMMAND}
+                -DOBJDIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/picocalc-doom.dir
+                -DOBJCOPY=${CMAKE_OBJCOPY}
+                -DFILES=i_picosound.c
+                -DFUNCS=I_Pico_UpdateSound,decompress_buffer,adpcm_decode_block_s8
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sram_sections.cmake
+            COMMENT "picocalc-doom: the mixer and OPL renderer to SRAM"
+            VERBATIM)
+    endif()
+
+    # The audio refill path (§6.2, §8.2): upstream's fill callback, which
+    # the PWM's interrupt calls, moved to SRAM, and its object's memcpy and
+    # memset sent to the shim's, in SRAM, which also count underruns
+    # (picocalc/audio_shim.c). Then, after the link, every function the
+    # interrupt reaches is checked to be in SRAM.
+    add_custom_command(TARGET picocalc-doom PRE_LINK
+        COMMAND ${CMAKE_COMMAND}
+            -DOBJDIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/picocalc-doom.dir
+            -DOBJCOPY=${CMAKE_OBJCOPY}
+            -DFILES=i_picosound.c
+            -DFUNCS=i2s_fill_audio
+            -DSYMS=memcpy=picocalc_audio_memcpy,memset=picocalc_audio_memset
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sram_sections.cmake
+        COMMENT "picocalc-doom: the audio callback to SRAM"
+        VERBATIM)
+    add_custom_command(TARGET picocalc-doom POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DELF=$<TARGET_FILE:picocalc-doom>
+            -DOBJDUMP=${CMAKE_OBJDUMP}
+            -DFUNCS=audio_irq,i2s_fill_audio$<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:,gated_fill>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_sram.cmake
+        COMMENT "picocalc-doom: the audio refill path is in SRAM"
+        VERBATIM)
+
     # Upstream's include paths; src/pico has audio.h, the API
     # picocalc/audio_shim.c implements.
     target_include_directories(picocalc-doom PRIVATE
@@ -218,7 +288,7 @@ else()
         EMU8950_LINEAR_END_OF_NOTE_OPTIMIZATION=1
         EMU8950_NO_PERCUSSION_MODE=1
         EMU8950_LINEAR=1
-        EMU8950_ASM=0
+        EMU8950_ASM=$<BOOL:${PICOCALC_DOOM_OPL_ASM}>
         EMU8950_SLOT_RENDER=1
         EMU8950_NO_RATECONV=1
         PICO_ON_DEVICE=1
@@ -250,6 +320,9 @@ else()
         PICOCALC_DOOM_COLORMAPS_SRAM=$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>
         PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
         PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
+        PICOCALC_DOOM_AUDIO_STALL=${PICOCALC_DOOM_AUDIO_STALL}
+        PICOCALC_DOOM_AUDIO_GAIN=${PICOCALC_DOOM_AUDIO_GAIN}
+        PICOCALC_DOOM_OPL_CORE1=$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>
         PICO_DEFAULT_UART=0
         PICO_DEFAULT_UART_TX_PIN=2
         PICO_DEFAULT_UART_RX_PIN=3
@@ -289,6 +362,12 @@ else()
         # and each WAD's open and directory (picocalc/dg_picocalc.c).
         -Wl,--wrap=I_FinishUpdate
         -Wl,--wrap=W_AddFile
+        # Mixing's share (picocalc/audio_shim.c, §8.3).
+        -Wl,--wrap=I_UpdateSound
+        # The OPL on core 1 (picocalc/opl_core1.c, §8.3).
+        $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=I_PicoSoundSetMusicGenerator>
+        $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=OPL_writeReg>
+        $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=OPL_calc_buffer_stereo>
         $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>:-Wl,--wrap=I_InitGraphics>
         $<$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>:-Wl,--wrap=R_Init>
     )

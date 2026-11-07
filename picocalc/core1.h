@@ -37,6 +37,13 @@ extern volatile uint32_t g_core0_sleep_us;   /* in DG_SleepMs, since boot */
 extern volatile uint32_t g_core0_frames;     /* DG_DrawFrame calls        */
 extern volatile uint32_t g_core0_stack;      /* core0_stack_used(), at the
                                                 last frame, sleep or stop */
+extern volatile uint32_t g_core0_heap;       /* core0_heap_used(), likewise */
+
+/* The C heap's extent, sbrk's break above `end`: newlib never gives it
+ * back, so it is the high-water. Core 0 only (sbrk is not shared). And
+ * the room it has, to __HeapLimit (§12.1). */
+uint32_t core0_heap_used(void);
+uint32_t core0_heap_size(void);
 
 /* Core 0, before a reboot: core 1 stops between two transactions and
  * stays stopped, so the reboot cannot catch the southbridge mid-way

@@ -19,6 +19,7 @@
 #include "doomgeneric.h"
 #include "doomtype.h"
 #include "i_system.h"
+#include "i_sound.h"
 #include "m_argv.h"
 #include "w_wad.h"
 
@@ -294,9 +295,15 @@ wad_file_t *__wrap_W_AddFile(char *filename)
     return w;
 }
 
-/* Core 0's idle time, for the heartbeat's busy share (§14.3). */
+/* Core 0's idle time, for the heartbeat's busy share (§14.3). Upstream
+ * mixes once a frame, from S_UpdateSounds(), but its screen wipe draws a
+ * second of frames without it, and the ring ran dry at every level's
+ * start (M6). The wipe sleeps once a frame, so the mixer is topped up
+ * here too (§8.3); it mixes only into free slots, so a sleep that comes
+ * between frames costs nothing. Counted in the busy share, not the idle. */
 void DG_SleepMs(uint32_t ms)
 {
+    I_UpdateSound();
     uint32_t t0 = time_us_32();
     sleep_ms(ms);
     g_core0_sleep_us += time_us_32() - t0;
