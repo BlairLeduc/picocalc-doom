@@ -22,7 +22,7 @@ by the owner; the log read by Claude.
 | The Shift trap cannot strand an arrow | **passed**: six times on the keyboard Shift went down with Left or Right held, and the key map let go of it at once; the player did not keep turning (the owner). Over the UART, Left pressed, Shift pressed and released with no release of Left: Left let go with Shift's press |
 | Alt with an arrow (§9.5) | **delivered** as the arrow with Alt held, all four; strafes (the owner) |
 | Three keys at once (§9.5) | **delivered**: Up, Ctrl and Space held together, moving forward and firing (the owner); five keys at once at most (`` ` `` `/` Up Space Ctrl) |
-| Alt with Space (§9.5) | the MCU's, as expected: no press of Space, `,` or `.` arrived under Alt |
+| Alt with Space (§9.5) | the MCU's, as expected: no press of Space, `,` or `.` arrived under Alt; they change the backlights (the owner) |
 | Space, `,` and `.` in a save's name | **typed** (the owner), the save cancelled |
 | Esc in the WAD list | **powered off** (installed over SWD, so no loader): asked of the southbridge 5 ms after the key, the page shown; the PicoCalc on again normally |
 | `I_Error()`'s page | **passed**: a `-timedemo demo1` build ended on it with "timed 1710 gametics in 2148 realtics"; a key restarted through the parked restart, and the second run timed the same |
@@ -78,7 +78,9 @@ instead of using and strafing.
 
 ### Not checked
 
-- **Alt with B**, and the power button's `0x91`: not pressed.
+- **Alt with B** not logged (the owner reports the MCU shows the battery's
+  state for it, and changes the backlights for Alt with Space, `,` and
+  `.`); the power button's `0x91` not pressed.
 - **Esc in the WAD list to the shell**: only the power-off path, since an
   SWD flash has no loader (M8 checks the shell's path with Doom's Quit).
 - The pages for a card that does not mount, a card without `/doom`, a

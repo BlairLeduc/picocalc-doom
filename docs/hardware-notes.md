@@ -1439,7 +1439,10 @@ alongside the MCU's source above.
   held together twice. Nothing was lost to ghosting in this session.
 - **Alt with Space, `,` or `.` sends nothing** when the key goes down
   after Alt: in the whole session no press of any of them arrived under
-  Alt. Alt with `B`, which the source also consumes, was not tried. A Space already held when Alt goes down keeps sending its repeats
+  Alt. The MCU acts on them itself, as the board's owner reports: Alt+`,`
+  and Alt+`.` change the screen's brightness, Alt+Space the keyboard's,
+  and Alt+`B` shows the battery's state (Alt+`B` was not logged in this
+  session). A Space already held when Alt goes down keeps sending its repeats
   (as presses) with Alt held.
 - **Shift with Left or Right sends nothing**, release included: six times
   Shift went down with Left or Right held, and no event for that arrow
