@@ -44,6 +44,7 @@
 #include "z_zone.h"
 
 #include "frame_hash.h"
+#include "psram_allocator.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -446,6 +447,18 @@ void *I_Realloc(void *ptr, size_t size)
         I_Error("I_Realloc: failed on reallocation of %zu bytes", size);
     }
     return p;
+}
+
+/* The device's PSRAM allocator, which the patched w_wad.c takes the WAD
+ * directory from (design.md §12.1): on the host, the C heap. */
+void *psram_malloc(size_t size)
+{
+    return malloc(size);
+}
+
+void psram_free(void *ptr)
+{
+    free(ptr);
 }
 
 void I_Quit(void)

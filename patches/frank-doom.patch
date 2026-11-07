@@ -25,6 +25,27 @@
  /* get the current time */
  DWORD get_fattime (void)
  {
+--- a/src/doomgeneric/doomgeneric/r_plane.c
++++ b/src/doomgeneric/doomgeneric/r_plane.c
+@@ -397,6 +397,18 @@
+ 	    //  by INVUL inverse mapping.
+ 	    dc_colormap = colormaps;
+ 	    dc_texturemid = skytexturemid;
++	    /* picocalc-doom: upstream's 240-row frame makes the view taller
++	     * than vanilla's (208 rows, 240 at the largest size), so its top
++	     * rows sat above the 128-row sky texture and wrapped to the
++	     * texture's bottom, a strip of horizon colours along the top of
++	     * the sky. Centre the texture no higher than the view's centre,
++	     * so row 0 of the view is the texture's row 0. A view of 200 rows
++	     * or fewer is drawn as before; only pixels change, not the game
++	     * (design.md §7.7). */
++	    if (FixedMul(centeryfrac, dc_iscale) > dc_texturemid)
++	    {
++	        dc_texturemid = FixedMul(centeryfrac, dc_iscale);
++	    }
+ 	    for (x=pl->minx ; x <= pl->maxx ; x++)
+ 	    {
+ 		dc_yl = pl->top[x];
 --- a/src/doomgeneric/doomgeneric/v_video.c
 +++ b/src/doomgeneric/doomgeneric/v_video.c
 @@ -157,6 +157,7 @@
@@ -90,3 +111,43 @@
  
      for ( ; col<w ; x++, col++, desttop++)
      {
+--- a/src/doomgeneric/doomgeneric/w_wad.c
++++ b/src/doomgeneric/doomgeneric/w_wad.c
+@@ -36,6 +36,10 @@
+ 
+ #include "w_wad.h"
+ 
++/* picocalc-doom: the WAD directory is allocated from the PSRAM, not the
++ * SRAM heap (design.md §12.1). */
++#include "psram_allocator.h"
++
+ typedef struct
+ {
+     // Should be "IWAD" or "PWAD".
+@@ -89,7 +93,16 @@
+     lumpinfo_t *newlumpinfo;
+     unsigned int i;
+ 
+-    newlumpinfo = calloc(newnumlumps, sizeof(lumpinfo_t));
++    /* picocalc-doom: from the PSRAM, not the SRAM heap: 28 bytes a lump,
++     * 82-89 KB for Doom II and its add-ons, twice that while a PWAD
++     * extends it, past the heap the port leaves (design.md §12.1). The
++     * PSRAM's allocator does not clear, and frees nothing: an old
++     * directory stays allocated, which a few loads of WADs can afford. */
++    newlumpinfo = psram_malloc((size_t)newnumlumps * sizeof(lumpinfo_t));
++    if (newlumpinfo != NULL)
++    {
++        memset(newlumpinfo, 0, (size_t)newnumlumps * sizeof(lumpinfo_t));
++    }
+ 
+     if (newlumpinfo == NULL)
+     {
+@@ -118,7 +131,7 @@
+     }
+ 
+     // All done.
+-    free(lumpinfo);
++    psram_free(lumpinfo);  /* picocalc-doom: as above (design.md §12.1) */
+     lumpinfo = newlumpinfo;
+     numlumps = newnumlumps;
+ }

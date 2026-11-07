@@ -1,12 +1,12 @@
-/* core1.h — core 1's loop: the southbridge, the panel and the log
- * (design.md §6.1).
+/* core1.h — core 1's loop: the presenter, the pages, the southbridge
+ * and the log (design.md §6.1).
  *
- * M1: bring-up of the southbridge and the LCD, the corner-coded test
- * pattern (hardware-notes.md §10, EL §13.3), the log pump and the
- * heartbeat's skeleton (§14.3). The presenter (M3, §7.4), the keyboard's
- * poll (M4, §9.1) and the pages (§13.1) join this loop later.
+ * Bring-up of the southbridge and the LCD, the corner-coded test pattern
+ * in a build that asks for it (hardware-notes.md §10, EL §13.3), the
+ * presenter (M3, §7.4), the pages (§13.1), the log pump and the heartbeat
+ * (§14.3). The keyboard's poll (M4, §9.1) joins this loop later.
  *
- * From picocalc-quest's core1.c (D8), cut to what M1 needs.
+ * From picocalc-quest's core1.c (D8).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -42,6 +42,11 @@ extern volatile uint32_t g_core0_stack;      /* core0_stack_used(), at the
  * stays stopped, so the reboot cannot catch the southbridge mid-way
  * (§6.2, hardware-notes.md §6.1). Returns once it has, or after 100 ms. */
 void core1_park(void);
+
+/* Every restart the port makes: park core 1, then the watchdog's reboot
+ * (§6.2). Both loaders start the program again (picocalc_shell.h). Does
+ * not return. */
+void picocalc_restart(void) __attribute__((noreturn));
 
 /* Both stacks are painted, so the heartbeat can report how deep each has
  * gone (§12.1). Core 0's is the SDK's default, the 4 KB of SCRATCH_Y

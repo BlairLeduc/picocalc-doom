@@ -274,6 +274,16 @@ memory-mapped window. Do not assume a generic `pico2` build enables it. Three th
   and once instead of twice, brought `memcpy` to 4 %. Count updates against
   changes before optimising anything else.
 
+  The same copy at 320×240 (76,800 bytes), measured on a Pimoroni Pico
+  Plus 2 W at 300 MHz with the PSRAM at 100 MHz, 2026-11-07, development
+  build, a game copying its finished frame from one PSRAM buffer into
+  another with `memcpy` through the cached window once a frame, 25–29
+  frames a second, for minutes at a time: **9.5–9.7 ms** a frame on
+  average, the longest 11.3 ms. Cleaning the destination's 76,800 bytes
+  out of the XIP cache afterwards with `xip_cache_clean_range`, with a
+  512-byte copy beside it, took **0.44–0.47 ms** on average, the longest
+  1.55 ms.
+
 Use PSRAM for **capacity** (level data, sprite banks, audio samples, a text
 buffer) and SRAM for the **per-frame working set**.
 
@@ -840,6 +850,15 @@ other is on the wire, at 26–30 frames a second for 60–88 s per run:
 
 Wire math is 16.38 ms, so 10.7 % over, the same margin as the SRAM-only
 figures above: the PSRAM read and the expansion hide behind the wire.
+
+The DMA'd figure holds with a game engine running flat out on the other
+core. Measured on a **Pimoroni Pico Plus 2 W, 2026-11-07**, the same
+clocks, core 1 presenting each 320×240 8-bit frame whole, DMA'd a row
+ahead from the uncached alias, while core 0 rendered and copied frames in
+the PSRAM at 100 % busy: **18.9–19.1 ms** a present on average, the
+longest 21.1 ms, at 23–29 frames a second over about eight minutes in
+five boots; 13,095 frames published and every one presented, none
+superseded.
 
 The same holds for a 240×224 rectangle (Plus 2 W, 2026-10-08, 75 MHz, one
 run each, at boot): **12.58 ms** row by row from two line buffers and
@@ -1496,6 +1515,16 @@ FatFs's free-space count, took **246 ms** for a card just put in and
 Scanning a directory of three folders, with up to one file check in each,
 took 6 ms. Card detect, debounced for 500 ms, was a reliable trigger for
 "a card went in" with the slot empty at power-on.
+
+**Measured** on a Plus 2 W, 2026-11-07, the same driver and settings, a
+FAT32 card: a mount after the processor was reset over SWD, the card
+staying powered, took **31–33 ms** in seven boots; a mount after the card
+was pushed in, the slot having been empty at boot, **235 ms**. Opening a
+13.0–18.5 MB file and reading its 37–50 KB directory (2,308–3,109
+sixteen-byte entries) in one piece took **27–43 ms**. Again, card detect
+debounced for 500 ms caught the insertion cleanly, and a watchdog reboot
+made with the core that polls the southbridge parked between transactions
+left the southbridge answering, with no I²C errors after.
 
 **Prefer the card to internal flash for anything the application writes**,
 such as settings. A text file on the card is one source of truth the user can

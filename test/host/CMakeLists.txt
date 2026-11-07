@@ -23,3 +23,10 @@ add_executable(test_frame_hash test_frame_hash.c ${PROJECT_SOURCE_DIR}/picocalc/
 target_include_directories(test_frame_hash PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
 target_compile_options(test_frame_hash PRIVATE ${PICOCALC_DOOM_WARNINGS})
 add_test(NAME test_frame_hash COMMAND test_frame_hash)
+
+# The frame pool, the margins rule and the row expander (§7.2).
+add_executable(test_framepool test_framepool.c ${PROJECT_SOURCE_DIR}/picocalc/framepool.c)
+target_include_directories(test_framepool PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
+target_compile_definitions(test_framepool PRIVATE PICOCALC_DOOM_HOST=1)
+target_compile_options(test_framepool PRIVATE ${PICOCALC_DOOM_WARNINGS})
+add_test(NAME test_framepool COMMAND test_framepool)
