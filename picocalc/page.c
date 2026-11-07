@@ -1,11 +1,12 @@
-/* page.c — the pages shown when something Doom needs is missing
- * (design.md §13.1). From picocalc-quest (D8).
+/* page.c — the port's own pages (design.md §13.1, §13.3). From
+ * picocalc-quest (D8).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "page.h"
 
+#include <stdbool.h>
 #include <string.h>
 
 #include "hardware/sync.h"
@@ -20,8 +21,19 @@
 #define MESSAGE_LINES 8u
 
 static volatile page_t s_wanted;
+static volatile uint32_t s_generation;
 static char s_message[PAGE_MESSAGE_MAX];
 static uint16_t s_row[2][LCD_PANEL_W];
+
+/* The WAD list (D13): written by core 0 before the page is asked for;
+ * after that only the highlight moves. */
+static char s_list[PAGE_LIST_MAX][PAGE_LIST_COLS + 1];
+static unsigned s_list_n;
+static volatile unsigned s_list_selected;
+static char s_list_esc[PAGE_LIST_COLS + 1];
+
+#define LIST_TOP    100u
+#define LIST_STEP   (FONT_H + 4u)
 
 typedef struct {
     const char *title;
@@ -70,7 +82,12 @@ static const page_text_t s_pages[] = {
     } },
     [PAGE_DOOM_ERROR] = { "Doom stopped with an error.", {
         "",
-        "Turn the PicoCalc off and on again.",
+        "Press any key to start again.",
+    } },
+    [PAGE_TO_SHELL] = { "Back to the shell.", { NULL } },
+    [PAGE_POWER_OFF] = { "Switching off.", {
+        "If it is still on in ten seconds,",
+        "switch it off with its power button.",
     } },
 };
 
@@ -85,8 +102,33 @@ void page_show_message(page_t p, const char *message) {
     s_wanted = p;
 }
 
+void page_show_list(const char *const *entries, unsigned n, unsigned selected,
+                    const char *esc) {
+    if (n > PAGE_LIST_MAX) n = PAGE_LIST_MAX;
+    for (unsigned i = 0; i < n; i++) {
+        strncpy(s_list[i], entries[i], PAGE_LIST_COLS);
+        s_list[i][PAGE_LIST_COLS] = '\0';
+    }
+    s_list_n = n;
+    s_list_selected = selected;
+    strncpy(s_list_esc, esc ? esc : "", PAGE_LIST_COLS);
+    s_list_esc[PAGE_LIST_COLS] = '\0';
+    __dmb();
+    s_wanted = PAGE_WAD_LIST;
+}
+
+void page_list_select(unsigned selected) {
+    s_list_selected = selected;
+    __dmb();
+    s_generation++;
+}
+
 page_t page_wanted(void) {
     return s_wanted;
+}
+
+uint32_t page_generation(void) {
+    return s_generation;
 }
 
 void page_line(unsigned y, const char *s, uint16_t fg, uint16_t bg) {
@@ -112,9 +154,39 @@ void page_line(unsigned y, const char *s, uint16_t fg, uint16_t bg) {
     lcd_blit_end();
 }
 
+/* The list's entries, the chosen one highlighted. Only these rows are
+ * drawn again when the highlight moves, so the page does not flash. */
+static void list_entries(void) {
+    unsigned selected = s_list_selected;
+    for (unsigned i = 0; i < s_list_n; i++) {
+        bool on = i == selected;
+        page_line(LIST_TOP + i * LIST_STEP, s_list[i],
+                  on ? RGB565(0, 0, 0) : RGB565(255, 255, 255),
+                  on ? RGB565(255, 200, 0) : RGB565(0, 0, 0));
+    }
+}
+
+static void list_draw(void) {
+    const uint16_t bg = RGB565(0, 0, 0), grey = RGB565(128, 128, 128);
+    page_line(40, "picocalc-doom", grey, bg);
+    page_line(40 + 3u * FONT_H, "Choose a game.", RGB565(255, 200, 0), bg);
+    list_entries();
+    unsigned y = LIST_TOP + PAGE_LIST_MAX * LIST_STEP + 2u * FONT_H;
+    page_line(y, "Up, Down: choose    Enter: start", grey, bg);
+    if (s_list_esc[0] != '\0') page_line(y + FONT_H + 4u, s_list_esc, grey, bg);
+}
+
+void page_refresh(page_t p) {
+    if (p == PAGE_WAD_LIST) list_entries();
+}
+
 void page_draw(page_t p) {
     const uint16_t bg = RGB565(0, 0, 0);
     lcd_fill(0, 0, LCD_PANEL_W, LCD_PANEL_H, bg);
+    if (p == PAGE_WAD_LIST) {
+        list_draw();
+        return;
+    }
     if (p == PAGE_NONE || p >= sizeof s_pages / sizeof s_pages[0]) return;
 
     const page_text_t *t = &s_pages[p];

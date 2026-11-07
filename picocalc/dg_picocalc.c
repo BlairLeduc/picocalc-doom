@@ -6,9 +6,10 @@
  * Upstream's behaviour less HDMI, PS/2 and USB. main() has started and
  * checked the PSRAM by the time DG_Init() runs (§11.3, M1). DG_Init()
  * sets up the frame pool (§7.2) and checks the card, with a page for each
- * failure (§13.1); DG_StartScreen() starts the IWAD (§13.1, M3: no list
- * yet). The WAD list (D13), the at-exit list and the exit to the shell
- * (§13.3) replace the marked parts in later milestones.
+ * failure (§13.1); DG_StartScreen() starts the IWAD, from the WAD list
+ * when there is more than one (§13.1, D13); I_Error() shows its page and
+ * starts again on a key. The at-exit list and Doom's Quit to the shell
+ * (§13.3) replace the marked parts in M8.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -24,8 +25,11 @@
 #include "pico/stdlib.h"
 
 #include "core1.h"
+#include "exit.h"
 #include "ff.h"
 #include "frank_doom_log.h"
+#include "input.h"
+#include "doomkeys.h"
 #include "page.h"
 #include "picocalc_shell.h"
 #include "psram_allocator.h"
@@ -148,11 +152,25 @@ void DG_Init(void)
 }
 
 /* The IWADs of Doom's own table (d_iwad.c) that this engine plays: Doom's
- * games, not Heretic's, Hexen's or Strife's (§1). */
-static const char *const s_iwads[] = {
-    "doom2.wad", "plutonia.wad", "tnt.wad", "doom.wad", "doom1.wad", "chex.wad",
-    "hacx.wad", "freedm.wad", "freedoom2.wad", "freedoom1.wad",
+ * games, not Heretic's, Hexen's or Strife's (§1). In the WAD list's
+ * order, each with its entry there (§13.1), at most PAGE_LIST_COLS. */
+static const struct {
+    const char *file;
+    const char *entry;
+} s_iwads[] = {
+    { "doom.wad",      "DOOM (doom.wad)" },
+    { "doom2.wad",     "DOOM II: Hell on Earth (doom2.wad)" },
+    { "plutonia.wad",  "Final DOOM: Plutonia (plutonia.wad)" },
+    { "tnt.wad",       "Final DOOM: TNT Evilution (tnt.wad)" },
+    { "doom1.wad",     "DOOM shareware (doom1.wad)" },
+    { "freedoom1.wad", "Freedoom: Phase 1 (freedoom1.wad)" },
+    { "freedoom2.wad", "Freedoom: Phase 2 (freedoom2.wad)" },
+    { "freedm.wad",    "FreeDM (freedm.wad)" },
+    { "chex.wad",      "Chex Quest (chex.wad)" },
+    { "hacx.wad",      "HACX (hacx.wad)" },
 };
+#define IWADS (sizeof s_iwads / sizeof s_iwads[0])
+_Static_assert(IWADS <= PAGE_LIST_MAX, "every IWAD fits the list");
 
 #define MAX_ARGS 32
 
@@ -174,29 +192,60 @@ static int split_args(char *s, char **args, int n)
     return n;
 }
 
-/* Which IWAD to start (§13.1, D13). M3 has no list: the build's -iwad if
- * it names one; otherwise the first in Doom's own order of those found,
- * which is the only one when the card has one. M4 draws the list, and M7
- * reads picocalc.ini's iwad. */
+/* Core 0, before Doom: the WAD list (D13), until Enter chooses one of
+ * the `n` found or Esc leaves (§13.3). Returns the index chosen. */
+static unsigned choose_iwad(const unsigned *found, unsigned n)
+{
+    const char *entries[PAGE_LIST_MAX];
+    for (unsigned i = 0; i < n; i++) {
+        entries[i] = s_iwads[found[i]].entry;
+    }
+    unsigned sel = 0;
+    const char *esc = picocalc_exit_label();
+    page_show_list(entries, n, sel, esc);
+    FRANK_DOOM_LOG("  iwad         : the WAD list, %u to choose from; %s\n", n,
+                   esc ? esc : "Esc goes nowhere");
+    for (;;) {
+        int key = input_next_press();
+        if (key < 0) {
+            sleep_ms(5);
+            continue;
+        }
+        if (key == KEY_UPARROW || key == KEY_DOWNARROW) {
+            sel = (sel + (key == KEY_UPARROW ? n - 1u : 1u)) % n;
+            page_list_select(sel);
+        } else if (key == KEY_ENTER) {
+            break;
+        } else if (key == KEY_ESCAPE) {
+            FRANK_DOOM_LOG("  iwad         : Esc in the WAD list\n");
+            picocalc_exit();   /* returns only if it cannot leave */
+        }
+    }
+    /* Enter's repeats are dropped and its release reaches Doom as an up,
+     * which does nothing: the key map keeps it held until then. */
+    page_show(PAGE_NONE);
+    return found[sel];
+}
+
+/* Which IWAD to start (§13.1, D13): the build's -iwad if it names one;
+ * the only one when the card has one; otherwise the one chosen from the
+ * WAD list. M7 adds picocalc.ini's iwad. */
 void DG_StartScreen(void)
 {
     static char build_args[] = PICOCALC_DOOM_ARGS;
     static char *args[MAX_ARGS + 1];
-    int n = 0, found = 0;
-    const char *first = NULL;
+    unsigned found[IWADS], n_found = 0;
+    int n = 0;
 
-    for (unsigned i = 0; i < sizeof s_iwads / sizeof s_iwads[0]; i++) {
+    for (unsigned i = 0; i < IWADS; i++) {
         FILINFO fi;
-        if (f_stat(s_iwads[i], &fi) == FR_OK && !(fi.fattrib & AM_DIR)) {
-            FRANK_DOOM_LOG("  iwad         : %s, %lu bytes\n", s_iwads[i],
+        if (f_stat(s_iwads[i].file, &fi) == FR_OK && !(fi.fattrib & AM_DIR)) {
+            FRANK_DOOM_LOG("  iwad         : %s, %lu bytes\n", s_iwads[i].file,
                            (unsigned long)fi.fsize);
-            if (first == NULL) {
-                first = s_iwads[i];
-            }
-            found++;
+            found[n_found++] = i;
         }
     }
-    if (found == 0) {
+    if (n_found == 0) {
         FRANK_DOOM_LOG("  iwad         : none in /doom\n");
         card_failed(PAGE_NO_IWAD);
     }
@@ -211,10 +260,11 @@ void DG_StartScreen(void)
         }
     }
     if (!build_iwad && n + 2 <= MAX_ARGS) {
+        unsigned chosen = n_found == 1 ? found[0] : choose_iwad(found, n_found);
         args[n++] = "-iwad";
-        args[n++] = (char *)first;
-        FRANK_DOOM_LOG("  iwad         : starting %s, %s\n", first,
-                       found == 1 ? "the only one" : "the first of Doom's order (no list until M4)");
+        args[n++] = (char *)s_iwads[chosen].file;
+        FRANK_DOOM_LOG("  iwad         : starting %s, %s\n", s_iwads[chosen].file,
+                       n_found == 1 ? "the only one" : "chosen from the list");
     }
     args[n] = NULL;
 
@@ -267,8 +317,9 @@ void DG_SetWindowTitle(const char *title)
 
 void I_Error(char *error, ...)
 {
-    /* The page names it (§13.1); M4 restarts on a key. A -timedemo run
-     * ends here too, with its result. */
+    /* The page names it, and a key starts again, through the restart
+     * that parks core 1 (§13.1). A -timedemo run ends here too, with its
+     * result. */
     static char message[PAGE_MESSAGE_MAX];
     g_core0_stack = core0_stack_used();
     va_list ap;
@@ -277,9 +328,15 @@ void I_Error(char *error, ...)
     va_end(ap);
     FRANK_DOOM_LOG("I_Error: %s\n", message);
     page_show_message(PAGE_DOOM_ERROR, message);
-    for (;;) {
-        tight_loop_contents();
+    /* Keys queued when Doom stopped are not the answer, and a key held
+     * then repeats as a repeat, not a press: only a press from here on. */
+    while (input_next_press() >= 0) {
     }
+    while (input_next_press() < 0) {
+        sleep_ms(5);
+    }
+    FRANK_DOOM_LOG("picocalc-doom: a key on the error page; starting again\n");
+    picocalc_restart();
 }
 
 void *I_Realloc(void *ptr, size_t size)

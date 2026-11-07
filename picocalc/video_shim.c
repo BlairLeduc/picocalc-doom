@@ -28,6 +28,7 @@
 
 #include "core1.h"
 #include "framepool.h"
+#include "input.h"
 #include "video.h"
 
 #include <string.h>
@@ -111,6 +112,8 @@ void DG_DrawFrame(void) {
     framepool_publish(&s_pool, i);
     spin_unlock(s_lock, irq);
     claim();
+    /* A press Doom took before this frame: its key-to-frame time (M4). */
+    input_frame_published(time_us_32());
 
     g_core0_frames++;
     g_core0_stack = core0_stack_used();

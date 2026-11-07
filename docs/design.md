@@ -24,10 +24,11 @@ Estimates are labelled as estimates; everything else is read from source,
 from the companions' measurements, or from the upstream build measured on
 2026-11-06 (§3.4).
 
-**Status, 2026-11-07.** M3 done: Doom's title, demos and credits on the
-panel through the frame pool and core 1's presenter, the card checked with
-a page for each failure, the WAD directory in PSRAM, and the sky's top rows
-fixed (§7.7) (`milestones.md`). Upstream is
+**Status, 2026-11-07.** M4 done: the keyboard through core 1's poll and
+the key map of §9.2 with the Shift trap, the WAD list, Esc there leaving,
+and `I_Error()`'s page starting again on a key; the owner walked E1M1
+from the PicoCalc's keyboard (`milestones.md`). M3 before it put Doom on
+the panel through the frame pool. Upstream is
 pinned at commit `153a950ba53f2dc7f1101702b57c1078d99575aa` (2026-05-12,
 version 1.11).
 
@@ -106,9 +107,9 @@ on them.
 | D9 | 2026-11-06 | Licence the port's own code **GPL-2.0-or-later**, and relicense the owner's copied Quest code to match (§5.5). Upstream ships GPL-2.0's text, and some of its own files carry no notice, so GPL-3.0-only code could not be combined with them. | Settled 2026-11-06 |
 | D10 | 2026-11-06 | No internal flash writes. Settings, Doom's configuration and saves live on the card (HW §7.1, EL §8.7). | Proposed |
 | D11 | 2026-11-06 | Keep upstream's audio shape (mixing in the game loop, the IRQ only copying), and run the PWM at **49,718 Hz**, the OPL emulator's own rate, so no rate converter is needed (§8). | Proposed |
-| D12 | 2026-11-06 | The key map of §9.2: arrows move and turn, Ctrl fires, Space uses, Alt and `,` `.` strafe, running is always on, **Shift is bound to nothing in play**. | Proposed; settled by the owner's play-testing in M7 |
-| D13 | 2026-11-06 | The port draws its own WAD list, and boots straight into the game when the card has one IWAD or `picocalc.ini` names one (§13.1). | Proposed |
-| D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Proposed |
+| D12 | 2026-11-06 | The key map of §9.2: arrows move and turn, Ctrl fires, Space uses, Alt and `,` `.` strafe, running is always on, **Shift is bound to nothing in play**. | Accepted 2026-11-07 for M4; settled by the owner's play-testing in M7 |
+| D13 | 2026-11-06 | The port draws its own WAD list, and boots straight into the game when the card has one IWAD or `picocalc.ini` names one (§13.1). | Settled 2026-11-07 |
+| D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Esc in the WAD list taking this path settled 2026-11-07 (M4); Doom's Quit proposed, for M8 |
 | D15 | 2026-11-06 | Take Doom command-line arguments from the shell (`picocalc-doom -file sigil.wad -warp 1 1`) and from `picocalc.ini`'s `args` (§13.4). | Proposed |
 | D16 | 2026-11-06 | The project is a git repository on GitHub, `BlairLeduc/picocalc-doom`, with upstream as a submodule; each milestone lands as a pull request with CI (EL §14.7). | Settled |
 
@@ -677,12 +678,25 @@ which `DG_GetKey()` returns one at a time.
   game, and the MCU scans its matrix only every 16–26 ms (HW §6.2), so a
   faster poll buys little. Each poll costs 4.8 ms on the 10 kHz bus
   (HW §6.1), about 24 % of core 1 at 50 Hz, polled between presents.
+  **Measured in M4**: 50 a second with no frames, but 27–36 in play,
+  since at 32–34 frames a second each 19 ms present is followed by one
+  poll. M7 settles the rate; polling between the present's rows reaches
+  50 Hz if it is wanted.
 - **Latency, estimated**: up to one MCU scan (≤ 26 ms), one poll (≤ 20 ms),
   one tic (≤ 28.6 ms) and one render and present (~30 ms), so 50–100 ms
-  from finger to panel. M4 measures it.
+  from finger to panel. **Measured in M4**, from the FIFO read: to
+  `DG_GetKey()` a median of 17 ms (p90 28 ms); to the first frame
+  published after Doom took the press, a median of 39 ms (p90 52 ms,
+  longest 109 ms), and one 19 ms present to the panel; the MCU's scan is
+  before all of it.
 - `I_GetEvent()` posts at most one key release a tic (§3.2). Two arrows
-  let go together reach Doom a tic apart. Left as upstream's, and counted
-  in M4 to see whether it matters.
+  let go together reach Doom a tic apart. Left as upstream's; M4 counted
+  54 releases held over in eleven minutes of play.
+- **Shift's alternates** other than F6–F10 and Break are their base keys
+  (PgUp is Up, Home is Tab, Insert is Enter, or I under Alt), since Shift
+  is nothing in play. **While Doom takes a save's name**
+  (`saveStringEnter`), Space, `,` and `.` type themselves instead of Use
+  and strafe; doomgeneric's own platforms send Use for Space there.
 
 ### 9.2 Key map (D12, proposed)
 
@@ -752,18 +766,17 @@ key; `run = off` leaves `key_speed` at upstream's `KEY_RSHIFT`, which the
 key map never sends. One hunk in `d_main.c`, after Doom loads its
 configuration, applies `picocalc.ini`'s choice (§5.3).
 
-### 9.5 What M4 must find out
+### 9.5 What M4 found out
 
-From the MCU's source, not yet seen on a board (§17):
+Answered on the keyboard on 2026-11-07 (HW §6.3, `milestones.md`):
 
-- **Alt with an arrow** delivers the arrow with Alt held. HW §6.3 says Alt
-  passes keys through and consumes only `,` `.` Space `B`; the arrows
-  under Alt have not been logged.
-- **Three keys at once**, such as Up, Ctrl and Space, all arrive. The
-  arrows are outside the matrix (HW §6), which helps; the rest have not
-  been tried for ghosting.
-- **Alt with Space** is the MCU's (HW §6.3), so strafing on Alt and using
-  at once is impossible; `,` `.` strafe without that limit.
+- **Alt with an arrow** delivers the arrow with Alt held, all four, so
+  Alt+arrows strafe.
+- **Three keys at once** arrive: Up, Ctrl and Space together moved and
+  fired; five keys at once at most were seen, none lost.
+- **Alt with Space** is the MCU's, as its source says: no press of Space,
+  `,` or `.` arrived under Alt. So strafing on Alt and using at once is
+  impossible; `,` `.` strafe without that limit.
 
 ---
 
@@ -1510,9 +1523,10 @@ milestone named.
 | Full 320×240 present from PSRAM | 19.1 ms by DMA from the uncached alias, longest 21.1 ms | M3, the presenter under Doom II's attract loop (HW §4.7) | confirmed | Confirmed 2026-11-07, M3 |
 | PWM at 49,718 Hz: TOP 3016, oversample 2, 99.4 kHz carrier | right pitch, no audible carrier | arithmetic (§8.1); HW §5.2 on carriers | medium | M6 |
 | EMU8950 plus 16 effect channels per tic at 300 MHz | affordable | not measured; `rp2040-doom` ran it on an M0+ | low | M6 |
-| Alt+arrow delivered as the arrow with Alt held | yes | HW §6.3, from the MCU's source | medium | M4 |
-| Three keys at once (arrow, Ctrl, Space) delivered | yes | not tried | low | M4 |
-| Shift+Left/Right swallowed, release included | yes | HW §6.3, from the MCU's source | high | M4, by the trap's test on the keyboard |
+| Alt+arrow delivered as the arrow with Alt held | yes | all four, on the keyboard (HW §6.3) | confirmed | Confirmed 2026-11-07, M4 |
+| Three keys at once (arrow, Ctrl, Space) delivered | yes | Up, Ctrl and Space together, five keys at most (HW §6.3) | confirmed | Confirmed 2026-11-07, M4 |
+| Shift+Left/Right swallowed, release included | yes | six times on the keyboard; the trap let go each time (HW §6.3) | confirmed | Confirmed 2026-11-07, M4 |
+| The keyboard polled at 50 Hz | 50 with no frames; 27–36 in play | M4: one poll a present (§9.1) | confirmed | M7 settles the rate |
 | Lumps per IWAD (§12.1) | 2,306 / 2,919 / 2,984 / 3,101 (The Ultimate Doom, Doom II, Plutonia, TNT, 1.9); the re-release's 2–9 more; shareware ~1,264 | the owner's WADs, read 2026-11-06 and -07 (§10.4) | confirmed, but the shareware count | Confirmed 2026-11-07 |
 | This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes, once its 560- and 576-wide pictures are centred (§7.6) | the host engine: every demo and every map of the four IWADs and both PWADs, 2026-11-06; the 1.9 IWADs the same, 2026-11-07 | confirmed on the host | Confirmed 2026-11-06, M2; on the device, Doom II's title, demos and credits on the panel, 2026-11-07, M3 |
 | A 3 MB zone holds every map of the commercial IWADs | yes: 0.8 MB left at worst (No Rest for the Living MAP04), 1.4 MB on the IWADs, 1.9 or re-release | the host engine, every map (§12.2) | confirmed on the host | Confirmed 2026-11-07, M2; card reads in play on the device, M5 |

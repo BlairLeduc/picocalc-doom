@@ -30,3 +30,11 @@ target_include_directories(test_framepool PRIVATE ${PROJECT_SOURCE_DIR}/picocalc
 target_compile_definitions(test_framepool PRIVATE PICOCALC_DOOM_HOST=1)
 target_compile_options(test_framepool PRIVATE ${PICOCALC_DOOM_WARNINGS})
 add_test(NAME test_framepool COMMAND test_framepool)
+
+# The key map: every MCU code, retranslated releases, the Shift trap, the
+# bindings against the chords the MCU swallows (§9.2, §9.3).
+add_executable(test_keymap test_keymap.c ${PROJECT_SOURCE_DIR}/picocalc/keymap.c)
+target_include_directories(test_keymap PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
+target_compile_definitions(test_keymap PRIVATE PICOCALC_DOOM_HOST=1)
+target_compile_options(test_keymap PRIVATE ${PICOCALC_DOOM_WARNINGS})
+add_test(NAME test_keymap COMMAND test_keymap)

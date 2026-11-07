@@ -4,6 +4,94 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M4: keyboard and the WAD list
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
+flashed over SWD with `scripts/flash.sh`; development build, Arm GCC
+15.2.Rel1, Pico SDK 2.3.1; UART0 captured with `scripts/capture.sh`. The
+card held the original 1.9 IWADs (design.md §10.4). The owner accepted
+D12 (the key map, for M4; M7 settles it), D13 (the WAD list) and the WAD
+list's Esc of D14 before the work began. Driven over the UART
+(`scripts/keys.sh`) by Claude, then played and checked on the keyboard
+by the owner; the log read by Claude.
+
+| Check | Result |
+|---|---|
+| The owner moves through the WAD list and Doom's menus, starts a new game and walks E1M1 | **passed** (the owner): `doom.wad` chosen from a list of four; over the UART, `doom2.wad` the same way and a new game started from Doom's menu |
+| Every key, with each modifier, logged with its code; none lost | **passed**: 2,326 FIFO events in the owner's session, every one logged; **0 unknown, 0 stray, ring full 0, I²C errors 0, log dropped 0**; every code of the MCU's keymap seen but the power button's, which was not pressed |
+| The Shift trap cannot strand an arrow | **passed**: six times on the keyboard Shift went down with Left or Right held, and the key map let go of it at once; the player did not keep turning (the owner). Over the UART, Left pressed, Shift pressed and released with no release of Left: Left let go with Shift's press |
+| Alt with an arrow (§9.5) | **delivered** as the arrow with Alt held, all four; strafes (the owner) |
+| Three keys at once (§9.5) | **delivered**: Up, Ctrl and Space held together, moving forward and firing (the owner); five keys at once at most (`` ` `` `/` Up Space Ctrl) |
+| Alt with Space (§9.5) | the MCU's, as expected: no press of Space, `,` or `.` arrived under Alt; they change the backlights (the owner) |
+| Space, `,` and `.` in a save's name | **typed** (the owner), the save cancelled |
+| Esc in the WAD list | **powered off** (installed over SWD, so no loader): asked of the southbridge 5 ms after the key, the page shown; the PicoCalc on again normally |
+| `I_Error()`'s page | **passed**: a `-timedemo demo1` build ended on it with "timed 1710 gametics in 2148 realtics"; a key restarted through the parked restart, and the second run timed the same |
+| Key to event: FIFO read to `DG_GetKey()` | 2,326 events: median **17 ms**, p90 28 ms, p99 44 ms; up to 5.8 s while a level loads or wipes, when Doom does not poll |
+| Key to frame: FIFO read to the first frame published after Doom took the press | 390 presses: median **39 ms**, p90 52 ms, longest 109 ms; the panel shows it one present (19 ms) later |
+| Releases held over by `I_GetEvent()`'s one a tic | **54** in about eleven minutes of play |
+| Polls | 50 a second at 4.82–4.92 ms each with no frames; **27–36, mostly 32–33, in play**: see Found |
+| Core 1's stack, painted | **900 of 2,048 B** (M3: 788) |
+| Core 0's stack, painted | 2,004 of 3,072 B, unchanged |
+| Host tests | 7 of 7, with `test_keymap`, which fails when the Shift trap's release is taken out |
+| Host engine: demo 1 against the frame-hash list | passed |
+| `check_sources.sh` | passed |
+
+**The code**: `kbd.c` from Quest (the ring, the 20 ms poll, UART key
+injection), `keymap.c` (the MCU's pairs to Doom's codes, §9.2 and §9.3),
+`input_shim.c` (`DG_GetKey()`, the key log, the counters), `exit.c` from
+Quest, the WAD list and the exit pages in `page.c`, `core1.c`'s poll and
+power-off request, and a second heartbeat line for the keyboard.
+`scripts/keys.sh` from Quest. No change to the patch.
+
+Decided in the code, within §9.2: Shift's alternates other than F6–F10
+and Break are their base keys (PgUp is Up, Home is Tab, Insert is Enter,
+or I under Alt), since Shift is nothing in play; and while Doom takes a
+save's name (`saveStringEnter`), Space, `,` and `.` type themselves
+instead of using and strafing.
+
+### Sizes
+
+| | M3, development | M4, development | M4, release |
+|---|---:|---:|---:|
+| `.text` | 313,776 | 318,616 | 292,456 |
+| `.rodata` | 141,004 | 142,628 | 133,412 |
+| Image (`.bin`) | 522,088 | 528,552 | 493,152 |
+| `.data` | 66,228 | 66,228 | 66,204 |
+| `.bss` | 310,176 | 311,636 | 307,492 |
+| SRAM left for the heap | 147,608 | **146,148** | 150,316 |
+
+### Found
+
+- **The poll runs at the frame rate in play, not 50 Hz.** Core 1 presents
+  a frame (19 ms) when one is ready and polls when 20 ms have passed, so
+  at 32–34 frames a second each present is followed by one poll. The key
+  map and the latencies above are with that rate. The poll rate is M7's to
+  settle by play-testing (§16); polling between the present's rows is the
+  way to 50 Hz if it is wanted (emulator-lessons.md §7.1).
+- **Doom takes no keys during a level load or a wipe**: the Enter that
+  started a game waited 0.9 s in the ring, and one in Doom's start-up
+  5.8 s. Upstream's; nothing is lost.
+- **`grep` takes the capture for binary** after a reset's noise bytes, and
+  finds nothing in it; `grep -a` reads it all.
+- The MCU findings (Alt with the arrows, five keys at once, Shift with
+  Left and Right, held Insert) are in hardware-notes.md §6.3.
+
+### Not checked
+
+- **Alt with B** not logged (the owner reports the MCU shows the battery's
+  state for it, and changes the backlights for Alt with Space, `,` and
+  `.`); the power button's `0x91` not pressed.
+- **Esc in the WAD list to the shell**: only the power-off path, since an
+  SWD flash has no loader (M8 checks the shell's path with Doom's Quit).
+- The pages for a card that does not mount, a card without `/doom`, a
+  card without an IWAD, and the PSRAM's (from M3).
+- The release build on a device; the Plus 2.
+- `doom1.wad` and Freedoom.
+- Run always on: Doom's run key is still upstream's Shift, which is never
+  sent, so the player walks; `run = always` is M7's (§9.4).
+- `picocalc.ini`'s `iwad` (M7).
+- The device's frame-hash list and card reads in play (M5).
+
 ## M3: display and card
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2, id

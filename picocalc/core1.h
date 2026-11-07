@@ -3,8 +3,8 @@
  *
  * Bring-up of the southbridge and the LCD, the corner-coded test pattern
  * in a build that asks for it (hardware-notes.md §10, EL §13.3), the
- * presenter (M3, §7.4), the pages (§13.1), the log pump and the heartbeat
- * (§14.3). The keyboard's poll (M4, §9.1) joins this loop later.
+ * presenter (M3, §7.4), the pages (§13.1), the keyboard's poll (M4,
+ * §9.1), the log pump and the heartbeat (§14.3).
  *
  * From picocalc-quest's core1.c (D8).
  *
@@ -42,6 +42,11 @@ extern volatile uint32_t g_core0_stack;      /* core0_stack_used(), at the
  * stays stopped, so the reboot cannot catch the southbridge mid-way
  * (§6.2, hardware-notes.md §6.1). Returns once it has, or after 100 ms. */
 void core1_park(void);
+
+/* Core 0: ask the southbridge to power off in `seconds` (at least 6),
+ * done by core 1 between two transactions. True if it took it; false if
+ * it refused or core 1 did not answer within 200 ms (§13.3). */
+bool core1_power_off(uint8_t seconds);
 
 /* Every restart the port makes: park core 1, then the watchdog's reboot
  * (§6.2). Both loaders start the program again (picocalc_shell.h). Does

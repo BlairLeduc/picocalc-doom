@@ -100,10 +100,13 @@ else()
         picocalc/clock.c
         picocalc/core1.c
         picocalc/dg_picocalc.c
+        picocalc/exit.c
         picocalc/font8x10.c
         picocalc/frame_hash.c
         picocalc/framepool.c
         picocalc/input_shim.c
+        picocalc/kbd.c
+        picocalc/keymap.c
         picocalc/lcd.c
         picocalc/log.c
         picocalc/main.c
