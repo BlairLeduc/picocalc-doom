@@ -28,7 +28,7 @@ reference data (design.md §10.4), for the last run. Run by Claude; the panel ch
 | Core 0's stack, painted | 2,004 of 3,072 B, the same as M1, on all four IWADs' attract loops |
 | No-card page, then a card pushed in | the page (the owner's look), then a restart through `picocalc_restart()` 0.5 s after insertion; Doom started; southbridge answering, 0 I²C errors |
 | The four IWADs each started with `PICOCALC_DOOM_ARGS="-iwad X"` | passed, a minute of attract loop each |
-| The original 1.9 IWADs, the card's four re-release ones replaced, each started the same way | passed, a minute each: `doom.wad` 2,306 lumps 38 ms, `doom2.wad` 2,919 lumps 40 ms, `plutonia.wad` 2,984 lumps 42 ms, `tnt.wad` 3,101 lumps 43 ms (sizes and lumps those of 1.9, design.md §10.4); present 18.9–19.1 ms, copy 9.5–9.7 ms, none dropped; not looked at by the owner |
+| The original 1.9 IWADs, the card's four re-release ones replaced, each started the same way | passed, a minute each: `doom.wad` 2,306 lumps 38 ms, `doom2.wad` 2,919 lumps 40 ms, `plutonia.wad` 2,984 lumps 42 ms, `tnt.wad` 3,101 lumps 43 ms (sizes and lumps those of 1.9, design.md §10.4); present 18.9–19.1 ms, copy 9.5–9.7 ms, none dropped; right on the panel, all four, by the owner's look |
 | Host tests | 6 of 6, with `test_framepool` (the pool, 200,000 random steps; the margins rule against a model of upstream's copy, which a broken rule fails) |
 | Host engine: all 19 demos with the two new hunks | every one ends as in M2: the same tic, map, kills and items |
 | `check_sources.sh` | passed |
@@ -94,8 +94,7 @@ longer holds the WAD directory (64–89 KB), which is now in the PSRAM.
 - The pages for a card that does not mount, a card without `/doom`, and a
   card without an IWAD; and the PSRAM's page. Only the no-card page was
   shown.
-- The 1.9 IWADs' pictures by eye on the device (they booted and ran,
-  from the log); `doom1.wad` and Freedoom.
+- `doom1.wad` and Freedoom.
 - The release build on a device; the Plus 2.
 - `I_Error()`'s page (shown by M4's error and `-timedemo` runs, M5).
 - `picocalc.ini`'s `iwad` (M7, with the settings parser): M3 starts the
