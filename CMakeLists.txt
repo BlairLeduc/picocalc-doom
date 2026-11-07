@@ -21,6 +21,17 @@ if (PICOCALC_DOOM_HOST)
 
     enable_testing()
     add_subdirectory(test/host)
+
+    # The host engine (§15, M2): the patched upstream built for the
+    # workstation, a tool run by scripts/host_engine.sh. Needs the
+    # submodule; CI builds it so a patch that breaks it is seen.
+    option(PICOCALC_DOOM_HOST_ENGINE "Build doom_host, the host engine" ON)
+    if (PICOCALC_DOOM_HOST_ENGINE)
+        include(cmake/upstream.cmake)
+        picocalc_doom_patch_upstream(${CMAKE_CURRENT_SOURCE_DIR})
+        set(PICOCALC_DOOM_UPSTREAM ${CMAKE_CURRENT_SOURCE_DIR}/frank-doom)
+        add_subdirectory(test/host/engine)
+    endif()
 else()
     # One image, for the Plus 2; it runs on a Plus 2 W too (D2, §11.2).
     if (NOT DEFINED PICO_BOARD)
@@ -71,6 +82,7 @@ else()
     string(REGEX REPLACE "[ \t]+" "." fd_version "${fd_version}")
 
     include(cmake/upstream-sources.cmake)
+    include(cmake/engine-definitions.cmake)
     set(PICOCALC_DOOM_UPSTREAM_SOURCES)
     foreach(list ${FD_ALL_SOURCE_LISTS})
         list(APPEND PICOCALC_DOOM_UPSTREAM_SOURCES ${${list}})
@@ -85,6 +97,7 @@ else()
         picocalc/clock.c
         picocalc/core1.c
         picocalc/dg_picocalc.c
+        picocalc/frame_hash.c
         picocalc/input_shim.c
         picocalc/lcd.c
         picocalc/log.c
@@ -123,19 +136,9 @@ else()
         FRANK_DOOM_VERSION="${fd_version}"
         FRANK_DOOM_QUIET=$<NOT:$<BOOL:${PICOCALC_DOOM_UART}>>
 
-        CMAP256
-        DOOMGENERIC_RESX=320
-        DOOMGENERIC_RESY=240
-        FEATURE_SOUND
-        USE_PICO_SOUND
+        ${PICOCALC_DOOM_ENGINE_DEFINITIONS}
         USE_OPL_MUSIC=1
         USE_EMU8950_OPL=1
-        NUM_SOUND_CHANNELS=16
-        NO_USE_LIBSAMPLERATE
-        NO_USE_TIMIDITY
-        NO_USE_GUS
-        NO_USE_MUSIC_PACKS
-        USE_DIRECT_MIDI_LUMP=0
         EMU8950_NO_WAVE_TABLE_MAP=1
         EMU8950_NO_TLL=1
         EMU8950_NO_FLOAT=1

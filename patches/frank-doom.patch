@@ -25,3 +25,68 @@
  /* get the current time */
  DWORD get_fattime (void)
  {
+--- a/src/doomgeneric/doomgeneric/v_video.c
++++ b/src/doomgeneric/doomgeneric/v_video.c
+@@ -157,6 +157,7 @@
+     byte *dest;
+     byte *source;
+     int w;
++    boolean wide;
+ 
+     y -= SHORT(patch->topoffset);
+     x -= SHORT(patch->leftoffset);
+@@ -166,6 +167,18 @@
+         y += 40;
+     }
+ 
++    /* picocalc-doom: the 2024 re-release's full-screen pictures are 560
++     * pixels wide and its status bar 576, with the 320 the game draws in
++     * the middle. Centre a patch wider than the screen and crop it to the
++     * screen, as Chocolate Doom does, rather than skip it, which left the
++     * title, the intermissions and the status bar's background undrawn
++     * (design.md §7.6). */
++    wide = SHORT(patch->width) > SCREENWIDTH;
++    if (wide)
++    {
++        x -= (SHORT(patch->width) - SCREENWIDTH) / 2;
++    }
++
+     // haleyjd 08/28/10: Strife needs silent error checking here.
+     if(patchclip_callback)
+     {
+@@ -175,8 +188,7 @@
+ 
+ #ifdef RANGECHECK
+     // Clamp rather than error - some patches may be partially off-screen after Y offset
+-    if (x < 0
+-     || x + SHORT(patch->width) > SCREENWIDTH
++    if ((!wide && (x < 0 || x + SHORT(patch->width) > SCREENWIDTH))
+      || y < 0
+      || y + SHORT(patch->height) > SCREENHEIGHT)
+     {
+@@ -187,12 +199,25 @@
+     }
+ #endif
+ 
++    if (wide)
++    {
++        /* picocalc-doom: columns -x to -x + SCREENWIDTH, at the screen's
++         * left edge (design.md §7.6). */
++        V_MarkRect(0, y, SCREENWIDTH, SHORT(patch->height));
++        col = -x;
++        w = col + SCREENWIDTH;
++        x = 0;
++        desttop = dest_screen + y * SCREENWIDTH;
++    }
++    else
++    {
+     V_MarkRect(x, y, SHORT(patch->width), SHORT(patch->height));
+ 
+     col = 0;
+     desttop = dest_screen + y * SCREENWIDTH + x;
+ 
+     w = SHORT(patch->width);
++    }
+ 
+     for ( ; col<w ; x++, col++, desttop++)
+     {

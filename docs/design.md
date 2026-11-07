@@ -526,6 +526,26 @@ only when they change and cleared when their time is up, as Quest §7.4.
 Doom's own messages stay in its frame. A perf line is a development-build
 option, measured on and off (EL §12).
 
+### 7.6 The re-release's wide pictures
+
+The 2024 re-release draws its full-screen pictures for a widescreen
+display: `TITLEPIC`, `CREDIT`, `HELP1`, `INTERPIC`, `WIMAP0`–`2`, `ENDPIC`,
+`VICTORY2` and `PFUB2` are 560 pixels wide, and `STBAR` 576, each with the
+320 the game draws in the middle (read from the owner's `doom.wad`,
+2026-11-06; `doom2.wad`'s `STBAR` is the same). Upstream's `V_DrawPatch`
+skips a patch that does not fit the screen, so with these IWADs the title,
+the help screens, the intermission maps and the status bar's background
+were never drawn: the status bar showed whatever the zone held under its
+backing buffer, which differed from run to run (M2).
+
+The patch centres a patch wider than the screen and crops it to the
+screen, as Chocolate Doom does: `x -= (width − 320) / 2`, then only the
+columns on screen. A 320-wide patch is drawn as before. `PFUB2`, the
+bunny scroll at Doom's end, is drawn column by column by `f_finale.c`,
+not by `V_DrawPatch`, and shows its left 320 columns; it is carried on
+the milestones' not-checked list until someone plays to the end of
+episode 3.
+
 ---
 
 ## 8. Audio
@@ -895,6 +915,11 @@ Upstream, built (§3.4): `.data` 73,544 and `.bss` 320,400 bytes leave
 | `doom2.wad` | 2,928 | 81,984 |
 | `plutonia.wad` | 2,991 | 83,748 |
 | `tnt.wad` | 3,109 | 87,052 |
+| Doom II with `nerve.wad` | 3,045 | 85,260 |
+| Doom II with `masterlevels.wad` | 3,205 | 89,740 |
+
+The counts are the engine's own, measured by the host engine (M2), and
+agree with the WADs' headers.
 
 Every IWAD is 13–19 MB, more than the PSRAM, which is why upstream reads
 lumps from the card on demand rather than loading the WAD.
@@ -936,6 +961,31 @@ zone's low-water on every map of every IWAD to hand (M2), and the device's
 heartbeat counts card reads in play. The temporary half is 4 MB for one
 song's conversion, which is generous; the zone can grow into it if M2 says
 it must.
+
+**Measured (M2, 2026-11-06, the host engine):** yes. Warped to every map of
+every WAD to hand at skill 4 and run for 2,100 tics, the zone's peak of
+blocks that cannot be purged, and what was left free or purgeable at
+worst, of 3,145,728 bytes:
+
+| WAD | Maps | Peak not purgeable | Least free or purgeable | Reads in play, all maps |
+|---|---:|---|---:|---:|
+| `doom.wad` | 36 | 643,680–1,152,776 (E4M9) | 1,992,952 | 224 |
+| `doom2.wad` | 32 | 737,464–1,315,280 (MAP15) | 1,830,448 | 165 |
+| `plutonia.wad` | 32 | 933,880–1,680,096 (MAP28) | 1,465,632 | 323 |
+| `tnt.wad` | 32 | 998,176–1,774,112 (MAP31) | 1,371,616 | 369 |
+| `nerve.wad` over Doom II | 9 | 1,050,032–**2,336,496** (MAP04) | **809,232** | 21 |
+| `masterlevels.wad` over Doom II | 21 | 733,248–1,592,984 (MAP12) | 1,552,744 | 135 |
+
+No `Z_Malloc` failed. No Rest for the Living's maps are the largest by
+far (MAP04's `SIDEDEFS` is 222,690 bytes, Doom II MAP04's 23,400), and
+leave 0.8 MB. "Reads in play" counts every read of a WAD once the level's
+first frame is drawn, exactly (the host's stdio read, counted): after
+Doom's level precache, a lump the zone purged and needs again, or one the
+precache does not cover. A minute of standing still is a light load; the
+demos, which move and skip the precache, read 93–549 lumps in play
+(0.3–1.6 MB), and a 4 MB zone cut Doom's demo1 from 124 to 39 and
+Plutonia's demo1 only from 531 to 477, so most of those reads are first
+sightings, not purges. The device's heartbeat counts the real ones from M3.
 
 ### 12.3 Flash
 
@@ -1138,9 +1188,15 @@ not a CTest, since it needs WADs, which never go in the repository:
 - **Demo sync.** `-timedemo` of each IWAD's demos plays to its end.
   Upstream's changes to the renderer should not reach game logic; a desync
   says one did.
-- **Frame hashes.** A CRC of each frame (pixels and palette index) during
-  `-timedemo demo1`. Under `-timedemo` Doom renders exactly one frame per
-  tic, so the list is deterministic. **The same list from the device** shows
+- **Frame hashes.** A CRC-32 of each frame (pixels, then the palette)
+  during `-timedemo demo1`, one per game tic: the last frame drawn in it,
+  since a screen wipe draws as many frames in one tic as real time allows
+  (`picocalc/frame_hash.c`, shared with the device). The list is made four
+  times with the zone filled and placed differently; a tic whose hash
+  changes read memory Doom never wrote (a sprite's top row can read past
+  its patch, as in vanilla) and is marked to be skipped. The list is
+  `test/host/engine/doom-demo1.crc`; a CTest checks it still matches when
+  `doom.wad` is to hand. **The same list from the device** shows
   the engine on the board is the host's (EL §13.3), and it is the check that
   catches a marginal PSRAM or flash timing, which corrupts quietly
   (HW §3).
@@ -1401,11 +1457,11 @@ milestone named.
 | Three keys at once (arrow, Ctrl, Space) delivered | yes | not tried | low | M4 |
 | Shift+Left/Right swallowed, release included | yes | HW §6.3, from the MCU's source | high | M4, by the trap's test on the keyboard |
 | Lumps per IWAD (§12.1) | 2,308 / 2,928 / 2,991 / 3,109 (Doom, Doom II, Plutonia, TNT); shareware ~1,264 | the owner's WADs, read 2026-11-06 (§10.4) | confirmed, but the shareware count | Confirmed 2026-11-06 |
-| This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes | not run; vanilla engines are said to | medium | M2 |
-| A 3 MB zone holds every map of the commercial IWADs | yes | upstream ships it; not measured | medium | M2, M5 |
+| This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes, once its 560- and 576-wide pictures are centred (§7.6) | the host engine: every demo and every map of the four IWADs and both PWADs | confirmed on the host | Confirmed 2026-11-06, M2; the device in M3 |
+| A 3 MB zone holds every map of the commercial IWADs | yes: 0.8 MB left at worst (No Rest for the Living MAP04), 1.4 MB on the IWADs | the host engine, every map (§12.2) | confirmed on the host | Confirmed 2026-11-06, M2; card reads in play on the device, M5 |
 | SRAM left after the port, with `I_VideoBuffer` in SRAM and the directory in PSRAM | ~40 KB | §12.1's estimate on §3.4's build | medium | M0, M5 |
 | Core 0's default stack is enough for Doom | yes: 2,004 of 3,072 B under Doom II's demos | M1, painted | medium: 1 KB to spare | M3–M5, on the big maps |
-| Upstream's renderer changes do not desync vanilla demos | yes | not checked | medium | M2 |
+| Upstream's renderer changes do not desync vanilla demos | yes | the host engine: all 19 demos play to their ends, with kills and items of real play; not yet compared exactly with stock doomgeneric | high | M2's exact comparison, when the owner allows it |
 | POWMAN timer unaffected by the move to 300 MHz | yes: 2 ms across 1.5–2.0 ms | M1, both boards (HW §1.2) | confirmed | Confirmed 2026-11-06, M1 |
 | The image fits UF2 Loader's partition | yes; 563 KB upstream | §3.4; HW §2.7 | high | M10 |
 
