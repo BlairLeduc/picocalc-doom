@@ -1,0 +1,77 @@
+# design.md §15: host tests, the source check, and the firmware for both
+# build types, with its size in the log.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    name: host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true   # the real patch's round trip needs upstream
+
+      - name: Configure
+        run: cmake -S . -B build/host -DPICOCALC_DOOM_HOST=ON -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build/host -j
+
+      - name: Test
+        run: ctest --test-dir build/host --output-on-failure --no-tests=error -j 4
+
+      # A submodule bump that adds or removes an engine file (design.md §5.4).
+      - name: Check the upstream source lists
+        run: scripts/check_sources.sh
+
+  firmware:
+    name: pico_plus2 UF2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0   # git describe needs the history for the banner
+
+      - name: Install the Arm toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '13.2.Rel1'
+
+      - name: Fetch the Pico SDK
+        uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: 2.3.1
+          path: pico-sdk
+          submodules: true
+
+      - name: Configure
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: cmake -S . -B build/pico -DCMAKE_BUILD_TYPE=Release
+
+      # The build prints arm-none-eabi-size itself.
+      - name: Build
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: cmake --build build/pico -j "$(nproc)"
+
+      # The build that ships: no UART (§14.2).
+      - name: Build without the UART
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: |
+          cmake -S . -B build/pico-release -DCMAKE_BUILD_TYPE=Release -DPICOCALC_DOOM_UART=OFF
+          cmake --build build/pico-release -j "$(nproc)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: picocalc-doom-uf2
+          path: |
+            build/pico/picocalc-doom.uf2
+            build/pico-release/picocalc-doom.uf2

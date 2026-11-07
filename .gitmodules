@@ -1,0 +1,3 @@
+[submodule "modules/frank-doom"]
+	path = modules/frank-doom
+	url = https://github.com/rh1tech/frank-doom.git

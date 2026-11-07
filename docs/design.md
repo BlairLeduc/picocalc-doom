@@ -24,7 +24,8 @@ Estimates are labelled as estimates; everything else is read from source,
 from the companions' measurements, or from the upstream build measured on
 2026-11-06 (§3.4).
 
-**Status, 2026-11-06.** Design only; nothing is built yet. Upstream is to be
+**Status, 2026-11-06.** M0 done: the skeleton, the patch pipeline and CI;
+the engine links, not yet run on a board (`milestones.md`). Upstream is
 pinned at commit `153a950ba53f2dc7f1101702b57c1078d99575aa` (2026-05-12,
 version 1.11).
 
