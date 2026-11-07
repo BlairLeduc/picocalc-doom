@@ -4,6 +4,177 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M5: first play, and the gate
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
+flashed over SWD with `scripts/flash.sh`; development builds, Arm GCC
+15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V, PSRAM 100 MHz, flash 75 MHz,
+LCD SPI 75 MHz; UART0 captured. The card held the original 1.9 IWADs
+(design.md §10.4); every run `-iwad doom.wad` (The Ultimate Doom) through
+`PICOCALC_DOOM_ARGS`, one build directory each. Run and read by Claude.
+The owner then played E1M1 to E1M3 on the keyboard, on the default build
+(B and the colormaps), **without problems**, twice: the first session was
+not captured, and its counters were read from the heartbeat at 1,850 s
+since boot; the second, with `s_sound.c` quiet, was captured whole.
+
+### The gate
+
+`-timedemo` frames per second, Doom's own figure, core 1 presenting, no
+audio. Each lever against the one before it as the control, in one
+sitting:
+
+| Demo (tics) | A: upstream | B: `I_VideoBuffer` in SRAM | B + COLORMAP in SRAM | B + COLORMAP + drawers in SRAM |
+|---|---:|---:|---:|---:|
+| demo1, E1M5 (1,710) | 28.0 | 44.2 | 46.4 | 48.2 |
+| demo2, E2M2 (2,347) | | 47.2 | 48.0 | |
+| demo3, E3M5 (3,863) | | 48.6 | 50.2 | |
+| demo4, E4M2 (818) | | **34.4** | **35.7**, twice | 37.6 |
+
+**Passed** with levers 1 and 2, against the proposed 35 fps for every demo
+(design.md §16): B alone left demo 4 at 34.4, and the colormaps brought it
+to 35.7, the same 802 realtics on a repeat run. Both are now on by
+default. Lever 3 was measured for M9 (+4 % on demo 1, +5 % on demo 4)
+and is a build switch, off; lever 4 (the copy by DMA) was not built. D7
+stands: no higher clock. The pass is narrow: demo 4 clears 35 by 2 %.
+
+| Per frame, demo 1 | A | B |
+|---|---:|---:|
+| Core 0's copy (`I_FinishUpdate`) | 9.71 ms | 6.08 ms |
+| Core 0's publish (palette, margins, clean) | 0.45 ms | 0.68 ms |
+| Present, core 1 | 19.6–19.9 ms, longest 21.2 | the same |
+
+**The profile** (hardware-notes.md §2.7), core 0 under B, demo 1, 20 s,
+78,775 PC samples: `memcpy` 27.8 % (the copy into the pool), `R_DrawColumn`
+16.8 %, `R_DrawSpan` 10.2 %, `R_RenderSegLoop` 5.0 %, `P_MobjThinker` 2.9 %,
+`xip_cache_maintain` 2.9 % (the publish's clean), the card's SPI 3.7 %;
+93 % of samples in flash. The copy is the next cost: strategy C (§7.3) is
+M9's first lever.
+
+Core 0's busy share under `-timedemo` is 96–99 % by construction (Doom
+never sleeps); its share in play is below.
+
+### Frame hashes
+
+| Build | Device's demo-1 list against the host's |
+|---|---|
+| A, twice | 1,702 the same, **0 different**, 7 skipped (with the remade list below) |
+| B | 1,702 the same, 0 different, 7 skipped |
+| B + COLORMAP | 1,702 the same, 0 different, 7 skipped |
+| B + COLORMAP + drawers | 1,702 the same, 0 different, 7 skipped |
+
+The first comparison found **three tics that differed, by one pixel each**
+(475, 796, 1517), the same three with the same CRCs on two runs: not a
+marginal PSRAM, which would vary. The tic 475 frame dumped over the UART
+(`PICOCALC_DOOM_FRAME_DUMP_TIC`) differed from the host engine's at one
+pixel, (296, 135); the host engine's column drawer, instrumented for that
+pixel, showed an imp's column (`TROOB1`) whose first row maps to texture
+row −1, which the drawer's `& 127` reads as row 127, 92 bytes past the
+1,600-byte lump. That is vanilla Doom. Past the lump is the next zone
+block, behind a 24-byte header on the device and a 40-byte one on the
+host, and the list's fills and offsets never change it. The host engine
+now pads every zone block with 128 bytes of the run's fill
+(`-hostzonepad`); the remade list marks those three, tic 206, and three
+more (334, 1275, 1376) as unstable, and no other hash changed. Not
+`char`'s signedness, `-fwrapv`, the optimiser or floating point, each
+ruled out on the host first; nor the sound module's lumps (a `-nosound`
+device run differed the same way).
+
+### The owner's play
+
+| Check | First session (not captured) | Second session (captured, 1,192 s) |
+|---|---|---|
+| E1M1 to E1M3 played on the keyboard | **passed** (the owner) | **passed** (the owner) |
+| Key events | 8,638 read; ring full 0, unknown 0, stray 0 | 5,379 read; ring full 0, unknown 0, stray 0 |
+| I²C errors | 0 | 0 |
+| Core 0's stack, painted | 2,004 of 3,072 B | 2,004 of 3,072 B |
+| Present | 19.7 ms, longest 21.2 ms | 19.5 ms, longest 21.2 ms |
+| Log lines dropped | **38,414**: upstream's sound traces | **18,766**, all in two seconds, at the two intermissions: upstream's `wi_stuff.c` (Found) |
+
+Core 0's busy share in the second session, over the seconds of play
+(frames drawn, the heartbeats of loads and intermissions left out):
+
+| Level | Seconds | Busy, median | 90th percentile | Busiest second | Frames drawn a second |
+|---|---:|---:|---:|---:|---:|
+| E1M1 | 387 | 87.9 % | 94.2 % | 98.4 % | 57.7 |
+| E1M2 | 537 | 85.4 % | 93.8 % | 98.3 % | 54.3 |
+| E1M3 | 133 | **90.2 %** | 95.4 % | 98.3 % | 51.8 |
+
+The share overstates the work: Chocolate Doom's `TryRunTics()` returns
+when a tic boundary passes without a new tic, and `D_Display()` draws the
+same tic again, so core 0 draws 52–58 frames a second instead of
+sleeping. **Every second of play drew 35 frames or more**, but for one in
+E1M1 (31, busy 98.4 %) and the seconds around the level loads. E1M3,
+the heaviest by the median, still drew 51.8 a second.
+
+### Other measurements
+
+| Check | Result |
+|---|---|
+| Core 0's stack, painted | **2,116 of 3,072 B** over the four demos (M1–M4: 2,004, on Doom II's) |
+| Core 1's stack | 900 of 2,048 B |
+| Log lines dropped | 0 in every run |
+| Frames dropped by core 1 | under `-timedemo` only, when core 0 publishes faster than a 19.7 ms present allows (224–756 a demo under B); none expected at Doom's 35 a second |
+| Die temperature | 23–24 °C |
+| Host tests | 7 of 7 |
+| Host engine: demo 1 against the remade list | passed |
+| `check_sources.sh` | passed |
+
+**The code**: strategy B and lever 2 as shims, not patches:
+`video_shim.c` wraps `I_InitGraphics()` and points `I_VideoBuffer` at a
+static SRAM buffer (upstream's zone block is left allocated, so the zone's
+layout stays the host's), and `render_sram.c` wraps `R_Init()`, copies
+COLORMAP to SRAM and runs `R_InitLightTables()` again. Lever 3 renames
+the drawers' sections to `.time_critical.*` after compiling
+(`cmake/sram_sections.cmake`), so the SDK's linker script puts them in
+SRAM. The frame hashes and the one-tic dump are in `video_shim.c`,
+behind `PICOCALC_DOOM_FRAME_HASHES`; `host_engine.sh compare` reads a
+capture. `scripts/profile.sh` from Quest; `scripts/timedemo.sh` reads a
+run's result and heartbeats. CI builds the levers too. No change to the
+patch.
+
+### Sizes
+
+| | M4, development | M5, development | M5, release |
+|---|---:|---:|---:|
+| `.text` | 318,616 | 318,832 | 292,648 |
+| `.rodata` | 142,628 | 142,732 | 133,412 |
+| Image (`.bin`) | 528,552 | 528,872 | 493,344 |
+| `.data` | 66,228 | 66,228 | 66,204 |
+| `.bss` | 311,636 | 397,140 | 392,996 |
+| SRAM left for the heap | 146,148 | **60,644** | 64,812 |
+
+`.bss` grew by the 76,800-byte frame and the 8,704-byte COLORMAP.
+
+### Found
+
+- **Drawing into SRAM is 1.58× drawing into PSRAM** (hardware-notes.md
+  §9.3), and the copy into the pool is still a quarter of core 0 after it.
+- **A device's frame differing from the host's by one pixel, every run**,
+  was a read past a lump into the next zone block, which a host's fills
+  cannot vary; padding the host's blocks can (emulator-lessons.md §11.2).
+- **Upstream's `s_sound.c` prints a dozen lines for every sound and
+  song** (`S_StartSound: ...`) in the development build: 2,033 in demo 3,
+  none dropped under `-timedemo`, but **38,414 dropped in the owner's
+  play**, more than UART0 at 115,200 baud carries. That file is now
+  compiled quiet in the development build too (`-UFRANK_DOOM_QUIET
+  -DFRANK_DOOM_QUIET=1` on it alone, no patch), as the release build
+  always was; M9's soak needs zero dropped. The second session then
+  dropped 12,750 and 6,016 lines, each in one second, at the two
+  intermissions: `wi_stuff.c` traces every intermission frame. It is
+  quiet the same way now.
+- **A capture left running from an earlier session holds the probe's
+  UART** and appends to its old file; `capture.sh` refuses the port. The
+  runs above were read from that file.
+
+### Not checked
+
+- The log in play with `wi_stuff.c` quiet too: built, not flashed (M9's
+  soak counts dropped lines).
+- The release build on a device, and the Plus 2.
+- Demos 2 and 3 with lever 3; lever 4.
+- Doom II, Plutonia and TNT under `-timedemo`.
+- The card's reads in play (the heartbeat has no card counter yet).
+
 ## M4: keyboard and the WAD list
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,

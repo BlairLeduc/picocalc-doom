@@ -88,11 +88,16 @@ uint32_t log_dropped(void) {
     return s_dropped;
 }
 
+uint32_t log_free(void) {
+    return s_ring_on ? LOG_RING - (s_head - s_tail) : LOG_RING;
+}
+
 #else /* no UART: nowhere to log */
 
 void log_init(void) {}
 void log_start_ring(void) {}
 void log_pump(void) {}
 uint32_t log_dropped(void) { return 0; }
+uint32_t log_free(void) { return 0; }
 
 #endif

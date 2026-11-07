@@ -1641,6 +1641,26 @@ it reproducible:
   unstable and skip them in the comparison; they cannot match the device.
   Doom's sprite drawer reads past small patches by design, so a handful of
   such frames is normal, not a fault.
+- *Vary what follows each allocated block, too.* Filling and moving the
+  heap changes only free memory and pointers. A read past the end of an
+  allocated block lands in the next block, whose size, tag and magic
+  fields stay the same from run to run, so those runs never flag it. On
+  the device, though, the next block sits behind a header of another
+  size (pointers are 4 bytes there, 8 on a 64-bit host), and the byte
+  read differs. Learned porting Doom, 2026-11-07: three frames of 1,709
+  differed by one pixel each, deterministically, on the board and on the
+  host alike. Dumping the device's frame for one of those tics found the
+  pixel, and a check in the host's column drawer then showed the cause.
+  The pixel was a sprite column whose first row maps to texture row −1:
+  the drawer's `& 127` turns that into row 127, up to 127 bytes past the
+  lump. Pad every allocation (wrap the allocator in the host build only)
+  with as many bytes as the longest overread, filled with each run's fill
+  byte. The padded runs marked those three tics and three more as
+  unstable, and changed nothing else.
+- *A deterministic mismatch is not a hardware fault until it varies.*
+  Run the device twice before blaming timing. A marginal memory clock
+  gives different frames on each run; a difference between platforms gives
+  the same wrong frames every time.
 - *Check that the list reproduces before trusting a mismatch.* The first
   runs of a list that differs on every frame are a defect to find (here, an
   undrawn status bar showing the heap), not noise to tolerate.

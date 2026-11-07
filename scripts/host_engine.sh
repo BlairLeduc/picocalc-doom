@@ -11,16 +11,22 @@
 #   scripts/host_engine.sh hashes [OUT]     the frame-hash list of doom.wad's
 #                                           demo1, the device's reference
 #   scripts/host_engine.sh compare FILE [REF]  a device's list against the
-#                                           reference
+#                                           reference; FILE is a list, or a
+#                                           UART capture from a build with
+#                                           PICOCALC_DOOM_FRAME_HASHES=ON,
+#                                           whose "fh TIC CRC" lines are read
 #
 # Results go to out/host-engine/ (OUT_DIR overrides): a log per run and a
 # table per command. Builds build/host first if doom_host is missing.
 #
 # The hash list is made four times, with the zone filled with a different
-# byte and at a different base each time. A tic whose hash changes reads
-# memory Doom never wrote or a zone block's header (a sprite's top row can
-# read past its patch, as in vanilla Doom); it cannot match the device's,
-# and is written "-" for compare to skip.
+# byte and at a different base each time, and every zone block followed by
+# 128 bytes of that byte. A tic whose hash changes reads memory Doom never
+# wrote, a zone block's header, or past a block's end (a sprite column whose
+# first row maps to texture row -1 reads row 127, up to 127 bytes past its
+# lump, as in vanilla Doom); it cannot match the device's, whose blocks have
+# other neighbours and smaller headers, and is written "-" for compare to
+# skip.
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -135,7 +141,7 @@ cmd_hashes() {
         fill=${fills[$i]}
         offset=${offsets[$i]}
         "$doom" -iwad "$wads/doom.wad" -timedemo demo1 \
-            -hostzonefill "$fill" -hostzoneoffset "$offset" \
+            -hostzonefill "$fill" -hostzoneoffset "$offset" -hostzonepad 128 \
             -hosthashes "$out/hashes/run$i.crc" > "$out/hashes/run$i.log" 2>&1 ||
             die "demo1 failed; see $out/hashes/run$i.log"
     done
@@ -145,7 +151,8 @@ cmd_hashes() {
         echo "# Frame hashes of doom.wad's demo1 under -timedemo (design.md §15):"
         echo "# game tic, then the CRC-32 of the last frame drawn in it,"
         echo "# pixels then palette (picocalc/frame_hash.h). \"-\": the frame read"
-        echo "# memory Doom never wrote, and differs from run to run."
+        echo "# memory Doom never wrote, or past a zone block's end, and differs"
+        echo "# from run to run."
         echo "# doom.wad $md5, made by scripts/host_engine.sh hashes."
         paste "$out/hashes/run0.crc" "$out/hashes/run1.crc" \
               "$out/hashes/run2.crc" "$out/hashes/run3.crc" |
@@ -159,7 +166,7 @@ cmd_hashes() {
 cmd_compare() {
     local file="${1:-}" ref="${2:-$ref_default}"
     [ -n "$file" ] || die "compare needs the device's list"
-    awk -v ref="$ref" '
+    LC_ALL=C tr -d '\r' < "$file" | awk -v ref="$ref" '
         BEGIN {
             while ((getline line < ref) > 0) {
                 if (line ~ /^#/) continue
@@ -167,6 +174,8 @@ cmd_compare() {
             }
         }
         /^#/ { next }
+        $1 == "fh" { $1 = $2; $2 = $3 }
+        $1 !~ /^[0-9]+$/ || $2 !~ /^([0-9a-f]+|-)$/ { next }
         { seen[$1] = 1
           if (!($1 in want)) { extra++; next }
           if (want[$1] == "-") { skipped++; next }
@@ -177,7 +186,7 @@ cmd_compare() {
             printf "same %d, different %d, skipped %d, missing %d, extra %d (of %d)\n",
                 same, diff, skipped, missing, extra, n
             exit (diff || missing) ? 1 : 0
-        }' "$file"
+        }'
 }
 
 case "${1:-}" in

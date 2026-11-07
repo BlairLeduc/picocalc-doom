@@ -1765,6 +1765,31 @@ cleaned out first: `xip_cache_clean_range()` over the 76,800-byte buffer
 took **0.45–0.69 ms** of core 0's time per frame (the longest seen), part
 of the 6–8 %.
 
+**A renderer's target buffer in SRAM instead of PSRAM: 1.58× the frame
+rate.** Measured on a **Pimoroni Pico Plus 2 W (RP2350B), 2026-11-07**,
+clk_sys 300 MHz at 1.20 V, PSRAM at 100 MHz, flash at 75 MHz, Arm GCC
+15.2.Rel1: a Chocolate Doom engine (doomgeneric) run from flash, with its
+3 MB zone heap (textures, sprites, flats) in PSRAM, replaying a recorded
+demo as fast as it can (`-timedemo demo1`, The Ultimate Doom 1.9, 1,710
+tics), core 1 sending finished frames to the LCD. The engine draws each
+320×240 8-bit frame into one buffer, then copies it to a second buffer in
+PSRAM that core 1 reads past the cache. Builds in one sitting, each run
+once:
+
+| Where the engine draws | Frames/s | The 76,800-byte copy to PSRAM |
+|---|---:|---:|
+| In PSRAM, through the cached window | 28.0 | 9.7 ms (PSRAM to PSRAM) |
+| In SRAM | **44.2** | 6.1 ms (SRAM to PSRAM) |
+| In SRAM, and the 8,704-byte light table read for every pixel copied from PSRAM to SRAM | 46.4 | 6.1 ms |
+
+The renderer writes each pixel once, in columns, so a frame in PSRAM goes
+through the 16 KB XIP cache one byte per line touched, and the cache lines
+it evicts belong to the code and textures too. Even in the second build the copy
+into PSRAM is a quarter of core 0 at 44 frames a second (the PC samples
+put 28 % of core 0 in `memcpy`), at about 12.6 MB/s for a write through
+the cached window followed by a clean. An 8.5 KB table read for every
+pixel costs about 5 % left in PSRAM.
+
 ### 9.4 Small `memcpy` calls are call overhead
 
 A sampler that copies one 8-pixel tile run at a time makes 28 calls per row and

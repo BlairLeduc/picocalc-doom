@@ -32,6 +32,11 @@ set_source_files_properties(${host_upstream_sources} PROPERTIES COMPILE_OPTIONS 
 set_source_files_properties(${engine_dir}/w_file_stdc.c PROPERTIES
     COMPILE_DEFINITIONS "fread=host_fread")
 
+# Z_Malloc is dg_host.c's, which can pad each block (-hostzonepad) and
+# calls upstream's, renamed here, for the rest.
+set_source_files_properties(${engine_dir}/z_zone.c PROPERTIES
+    COMPILE_DEFINITIONS "Z_Malloc=host_Z_Malloc_upstream")
+
 set(host_own_sources
     dg_host.c
     ${PROJECT_SOURCE_DIR}/picocalc/frame_hash.c

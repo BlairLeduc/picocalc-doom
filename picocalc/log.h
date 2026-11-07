@@ -37,4 +37,8 @@ void log_pump(void);
 /* Writes dropped because the ring was full. */
 uint32_t log_dropped(void);
 
+/* Bytes the ring has room for now: a writer that must not lose a line
+ * waits for it (the frame dump, M5). 0 with no UART. */
+uint32_t log_free(void);
+
 #endif /* PICOCALC_DOOM_LOG_H */

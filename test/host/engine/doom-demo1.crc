@@ -1,7 +1,8 @@
 # Frame hashes of doom.wad's demo1 under -timedemo (design.md §15):
 # game tic, then the CRC-32 of the last frame drawn in it,
 # pixels then palette (picocalc/frame_hash.h). "-": the frame read
-# memory Doom never wrote, and differs from run to run.
+# memory Doom never wrote, or past a zone block's end, and differs
+# from run to run.
 # doom.wad c4fe9fd920207691a9f493668e0a2083, made by scripts/host_engine.sh hashes.
 2 f2a15407
 3 3c5cc980
@@ -335,7 +336,7 @@
 331 deef4af4
 332 cd80fa6f
 333 774f62af
-334 02d64891
+334 -
 335 353c44d4
 336 dd83a53e
 337 bbc98118
@@ -476,7 +477,7 @@
 472 5aaa39f0
 473 f1d3ffb1
 474 c3e4a985
-475 df967469
+475 -
 476 966c0e23
 477 c53f1ded
 478 81d4ad0e
@@ -797,7 +798,7 @@
 793 435d2a45
 794 290071aa
 795 49ef6c46
-796 ab50997c
+796 -
 797 9d9c9334
 798 0d710948
 799 7edb3f72
@@ -1276,7 +1277,7 @@
 1272 508b2016
 1273 9c33ec1e
 1274 70942893
-1275 9c9f6007
+1275 -
 1276 06b59226
 1277 1d4dac6f
 1278 a79a7a40
@@ -1377,7 +1378,7 @@
 1373 74bb2fc6
 1374 7b8a97b3
 1375 6ba5c8bd
-1376 9444511e
+1376 -
 1377 227bfee5
 1378 579f7c8d
 1379 d8e8bf31
@@ -1518,7 +1519,7 @@
 1514 902f5956
 1515 31a1e702
 1516 ffd7926e
-1517 c03687d6
+1517 -
 1518 ceef56f1
 1519 0893d0c8
 1520 ed1c8ac0
