@@ -880,6 +880,28 @@ late refills and lost three halves' worth of samples, with no IRQ storm and
 no underrun, and playback carried on. That is evidence the recovery works,
 which a counter stuck at zero is not.
 
+### 6.5 Check the sample format against the data, not the code
+
+A port's upstream decoded Doom's sound lumps, which are **unsigned 8-bit**
+(128 is silence), as signed. A quiet stretch near 128 then swings between
++127 and −128 every sample: a full-scale buzz under every effect, which
+the owner heard at once as "extremely noisy". Reading three lumps from
+the WAD showed bytes centred on 126–127, and one XOR with 0x80 fixed it
+(2026-11-07). The code looked deliberate and had a variable named for a
+signed format; only the data could say. Any 8-bit sample path is worth a
+look at its bytes' mean before anyone listens.
+
+**The interrupt's path can include upstream's code without a patch.**
+Upstream's fill callback called the library's `memcpy` and `memset`,
+both in flash. After compiling, `objcopy --rename-section` moved the
+callback's section into the one the SDK copies to SRAM, and
+`--redefine-sym memcpy=…` in that one object sent its calls to the
+port's SRAM copies; the redirected `memset` doubles as the underrun
+counter, since upstream clears the slot only when its ring is empty. A
+post-link check that walks every branch from the interrupt handler in
+the disassembly, and fails on any target outside SRAM or any linker
+veneer, keeps it true.
+
 ---
 
 ## 7. Keyboard

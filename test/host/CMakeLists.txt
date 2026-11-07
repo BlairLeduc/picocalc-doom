@@ -38,3 +38,13 @@ target_include_directories(test_keymap PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
 target_compile_definitions(test_keymap PRIVATE PICOCALC_DOOM_HOST=1)
 target_compile_options(test_keymap PRIVATE ${PICOCALC_DOOM_WARNINGS})
 add_test(NAME test_keymap COMMAND test_keymap)
+
+# The audio shim's staging and conversion: the period, every 16-bit sample
+# to a compare value against a model, slots in and halves out across every
+# boundary, underruns as silence (§8.1, §8.2).
+add_executable(test_audio_stage test_audio_stage.c ${PROJECT_SOURCE_DIR}/picocalc/audio_stage.c)
+target_include_directories(test_audio_stage PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
+target_compile_definitions(test_audio_stage PRIVATE PICOCALC_DOOM_HOST=1)
+target_compile_options(test_audio_stage PRIVATE ${PICOCALC_DOOM_WARNINGS})
+target_link_libraries(test_audio_stage PRIVATE m)
+add_test(NAME test_audio_stage COMMAND test_audio_stage)

@@ -1232,6 +1232,59 @@ playing ScummVM-derived game audio (OPL music, digitised speech and effects).
   under its mutex and held the interrupt off for **163 ms**, three late
   refills, at a scene change.
 
+### 5.10 A 99 kHz carrier at 49,718 Hz, and how loud the output is
+
+Measured on a Plus 2 W at 300 MHz and 1.20 V, 2026-11-07, development
+build, playing a game's OPL2 music (an emulator at 49,716 Hz) and 8-bit
+sampled effects through the PWM output of §5.1–5.4: two halves of 512
+frames, oversample 2, the refill interrupt on `DMA_IRQ_1` at priority
+`0x40`, the mixer outside the interrupt (the interrupt only converts and
+re-arms).
+
+- **Divider 1, TOP 3016, oversample 2** gives a 99.4 kHz carrier,
+  log2(3,017) = 11.6 bits, and 300,000,000 / 6,034 = **49,718.26 samples
+  a second**. Music and effects sounded clean to the owner, by ear,
+  through the speakers: no whine, the right pitch. A carrier above §5.2's
+  73 kHz costs nothing audible here.
+- **The refill interrupt that only converts** (a 16-bit sample times a
+  gain, scaled to the period about its mid-point, saturated, each frame
+  written twice) took **0.5–0.9 % of core 0**, its longest run 68–108 µs,
+  at 97 refills a second, with every function on its path in SRAM. No
+  late refills in any run.
+- **The output is quiet at nominal level.** A mix whose loudest sample
+  each second peaked at 900–1,600 of 32,768 (about −27 to −30 dBFS) was
+  "very quiet" through the speakers. Eight times the gain, so the same
+  peaks reach about 12,000, was "right", in the owner's judgement. Plan for
+  a gain stage after the mixer, and saturate it.
+
+### 5.11 What EMU8950 costs, and where a second core can hide it
+
+Measured on a Plus 2 W at 300 MHz and 1.20 V, 2026-11-07, development
+build, a game's recorded demo with OPL2 music and effects, PC samples over
+SWD and the program's own timers.
+
+- **EMU8950** (Graham Sanderson's OPL2 emulator, its slot renderer, linear
+  mode, no rate converter) at **49,716 Hz** took about **18 % of a core**:
+  some 1,100 cycles a sample for 18 operators. From flash beside a game's
+  renderer, the whole mix (music and 8 effect channels) took 25–28 %;
+  with the emulator's code in SRAM, 22–25 %. Its own Thumb assembly
+  renderer (written for the RP2040) was no faster than its C on the M33.
+  So the cost is compute, not instruction fetch.
+- **A core that presents to the LCD by DMA is mostly waiting.** Sending
+  a 320-pixel RGB565 row at 75 MHz SPI takes about 68 µs, and a core that
+  converts the next row and then waits for the DMA spends most of each
+  row idle. Rendering the OPL in 8-sample steps for up to 50 µs after
+  each row is handed to the DMA put the music on that core at a cost of
+  0.7 ms on a 19.7 ms frame (20.4 ms), while it still presented 36 frames
+  a second. The same rendering done between frames instead left it
+  presenting 30: a frame, the music and the keyboard poll did not fit in
+  a second.
+- **A southbridge keyboard poll costs about 4.9 ms** of the polling core
+  each time, on the 10 kHz I²C bus (§6), blocking: 31–38 polls a second
+  is 150–190 ms of that core's second.
+
+
+
 ---
 
 ## 6. Keyboard, battery, backlight, power

@@ -6,6 +6,7 @@
 
 #include "core1.h"
 
+#include <stddef.h>
 #include <stdio.h>
 
 #include "hardware/dma.h"
@@ -13,7 +14,9 @@
 #include "hardware/watchdog.h"
 #include "pico/stdlib.h"
 
+#include "audio_shim.h"
 #include "board.h"
+#include "opl_core1.h"
 #include "framepool.h"
 #include "input.h"
 #include "kbd.h"
@@ -33,6 +36,7 @@ core1_bringup_t g_core1 = { .sb_version = -1 };
 volatile uint32_t g_core0_sleep_us;
 volatile uint32_t g_core0_frames;
 volatile uint32_t g_core0_stack;
+volatile uint32_t g_core0_heap;
 
 #define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 
@@ -103,6 +107,10 @@ static void row_dma_start(const uint8_t *src, unsigned slot) {
 
 /* The whole frame, through its palette, into one line buffer while the
  * other is on the wire (hardware-notes.md §4.6). */
+/* How long the presenter renders music after handing a row to the LCD's
+ * DMA (opl_core1.c): within the row's own transfer. */
+#define OPL_ROW_US 50u
+
 static void present(int i) {
     const uint8_t *px = video_pixels(i);
     const uint16_t *pal = video_palette(i);
@@ -116,6 +124,11 @@ static void present(int i) {
         uint16_t *line = s_line[row & 1u];
         frame_expand_row((const uint8_t *)s_idx[row & 1u], pal, line, FRAME_W);
         lcd_blit_row(line, FRAME_W);
+#if PICOCALC_DOOM_OPL_CORE1
+        /* The music, while the row goes out: about 68 us of SPI at 75 MHz,
+         * most of which the next row's wait would spend idle (§8.3). */
+        opl_core1_step(time_us_32() + OPL_ROW_US);
+#endif
         if (row % PUMP_ROWS == PUMP_ROWS - 1u) log_pump();
     }
     lcd_blit_end();
@@ -134,6 +147,16 @@ static void present(int i) {
 
 extern uint32_t __StackOneBottom, __StackOneTop;
 extern uint32_t __StackTop;
+extern char end, __HeapLimit;
+void *sbrk(ptrdiff_t incr);
+
+uint32_t core0_heap_used(void) {
+    return (uint32_t)((uintptr_t)sbrk(0) - (uintptr_t)&end);
+}
+
+uint32_t core0_heap_size(void) {
+    return (uint32_t)((uintptr_t)&__HeapLimit - (uintptr_t)&end);
+}
 extern char __scratch_y_end__;
 
 static uint32_t *core0_stack_floor(void) {
@@ -255,9 +278,18 @@ void core1_main(void) {
     present_stats_t last_present = s_present;
     video_stats_t last_video = g_video;
     input_stats_t last_input = g_input;
+    audio_stats_t last_audio = g_audio;
+#if PICOCALC_DOOM_OPL_CORE1
+    opl_core1_stats_t last_opl = g_opl_core1;
+#endif
     for (;;) {
         log_pump();
         loops++;
+#if PICOCALC_DOOM_OPL_CORE1
+        /* The music (§8.3): the presenter renders it in the LCD's waits;
+         * here, what is left, for up to 2 ms a loop. */
+        opl_core1_step(time_us_32() + 2000u);
+#endif
         if (s_park) {
             /* Between transactions: nothing of the southbridge's is in
              * flight here. */
@@ -346,7 +378,7 @@ void core1_main(void) {
             printf("hb %lu: core 0 busy %lu.%lu%%, frames %lu, published %lu, presented %lu, "
                    "dropped %lu; copy %lu us (max %lu), publish %lu us (max %lu), "
                    "present %lu us (max %lu), margins %lu; stacks: core 0 %lu of %lu B, "
-                   "core 1 %lu of %lu B; temp %d C, battery %d%%%s, i2c errors %lu, "
+                   "core 1 %lu of %lu B; heap %lu of %lu B; temp %d C, battery %d%%%s, i2c errors %lu, "
                    "log dropped %lu, core 1 loops %lu\n",
                    (unsigned long)seconds, (unsigned long)(busy / 10u),
                    (unsigned long)(busy % 10u), (unsigned long)(frames - last_frames),
@@ -360,6 +392,7 @@ void core1_main(void) {
                    (unsigned long)ps.max_us, (unsigned long)v.margins,
                    (unsigned long)g_core0_stack, (unsigned long)core0_stack_size(),
                    (unsigned long)core1_stack_used(), (unsigned long)core1_stack_size(),
+                   (unsigned long)g_core0_heap, (unsigned long)core0_heap_size(),
                    temp_c, battery < 0 ? -1 : battery & 0x7f,
                    battery >= 0 && (battery & 0x80) ? " charging" : "",
                    (unsigned long)sb_error_count(), (unsigned long)log_dropped(),
@@ -380,6 +413,49 @@ void core1_main(void) {
                    (unsigned long)(n_frame ? (in.frame_sum_us - last_input.frame_sum_us) / n_frame : 0),
                    (unsigned long)in.frame_max_us, (unsigned long)polls,
                    (unsigned long)(polls ? poll_us / polls : 0));
+            /* The audio's line (M6, §8.3): halves refilled and late, upstream's
+             * slots played and those its ring was empty for (in samples, the
+             * slot's frames), the interrupt's time, and mixing's, in
+             * I_UpdateSound(), each as a share of core 0's second. */
+            audio_stats_t au = g_audio;
+            uint32_t slot = audio_slot_frames();
+            uint32_t n_played = au.played - last_audio.played;
+            uint32_t irq_share = (au.irq_us - last_audio.irq_us) / (HEARTBEAT_US / 1000u);
+            uint32_t mix_share = (au.mix_us - last_audio.mix_us) / (HEARTBEAT_US / 1000u);
+            printf("hb %lu audio: halves %lu, late %lu; slots played %lu, underrun %lu "
+                   "(%lu samples; %lu since boot, %lu before the first); "
+                   "interrupt %lu.%lu%% (max %lu us), mix %lu.%lu%% (%lu us a slot, "
+                   "max call %lu us), updates %lu, pushes %lu; peak %lu\n",
+                   (unsigned long)seconds, (unsigned long)(au.halves - last_audio.halves),
+                   (unsigned long)au.late, (unsigned long)n_played,
+                   (unsigned long)(au.underruns - last_audio.underruns),
+                   (unsigned long)((au.underruns - last_audio.underruns) * slot),
+                   (unsigned long)au.underruns, (unsigned long)au.startup,
+                   (unsigned long)(irq_share / 10u), (unsigned long)(irq_share % 10u),
+                   (unsigned long)au.irq_max_us,
+                   (unsigned long)(mix_share / 10u), (unsigned long)(mix_share % 10u),
+                   (unsigned long)(n_played ? (au.mix_us - last_audio.mix_us) / n_played : 0),
+                   (unsigned long)au.mix_max_us,
+                   (unsigned long)(au.updates - last_audio.updates), (unsigned long)au.pushes,
+                   (unsigned long)au.peak);
+            g_audio_peak_ask++;
+#if PICOCALC_DOOM_OPL_CORE1
+            opl_core1_stats_t op = g_opl_core1;
+            uint32_t n_music = op.music - last_opl.music;
+            uint32_t opl_share = (op.render_us - last_opl.render_us) / (HEARTBEAT_US / 1000u);
+            printf("hb %lu opl: core 1 rendered %lu slots, %lu.%lu%% of core 1 (%lu us a slot, "
+                   "max %lu), writes %lu, done %lu of %lu handed over, late halves %lu, "
+                   "dropped %lu\n",
+                   (unsigned long)seconds, (unsigned long)n_music,
+                   (unsigned long)(opl_share / 10u), (unsigned long)(opl_share % 10u),
+                   (unsigned long)(n_music ? (op.render_us - last_opl.render_us) / n_music : 0),
+                   (unsigned long)op.render_max_us,
+                   (unsigned long)(op.writes - last_opl.writes), (unsigned long)op.done,
+                   (unsigned long)op.committed, (unsigned long)au.music_late,
+                   (unsigned long)op.dropped);
+            last_opl = op;
+#endif
+            last_audio = au;
             last_input = in;
             poll_us = polls = 0;
             last_sleep = sleep;

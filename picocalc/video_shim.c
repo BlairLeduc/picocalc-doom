@@ -216,6 +216,7 @@ void DG_DrawFrame(void) {
 
     g_core0_frames++;
     g_core0_stack = core0_stack_used();
+    g_core0_heap = core0_heap_used();
     uint32_t us = time_us_32() - t0;
     s_draw_us = us;
     g_video.publish_us += us;

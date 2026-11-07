@@ -4,6 +4,130 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M6: audio
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
+flashed over SWD with `scripts/flash.sh`; development builds, Arm GCC
+15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V; UART0 captured. The card held
+the original 1.9 IWADs (design.md §10.4); scripted runs `-iwad doom.wad`
+through `PICOCALC_DOOM_ARGS`. D11 settled by the owner before the work
+(49,718 Hz, upstream's audio shape). Run and read by Claude; listened to
+by the owner throughout, and the play test played by the owner.
+
+### Done when
+
+| Check | Result |
+|---|---|
+| Effects and OPL music by ear in E1M1 (The Ultimate Doom) and MAP01 (Doom II): pitch, speed, no carrier whine | **passed**, the owner, through the speakers and through the headphone jack |
+| Underruns over ten minutes of play and across level loads | 1,050 s of play over two boots: **47 slots** underrun after the first was played (most at the level loads, each a slot of 1,421 frames), 2 late halves from core 1; no late refills |
+| Mixing's share of core 0 with music | upstream unchanged: 22–28 %; as kept, with the OPL on core 1: **4–5 %** (the effects mixer); the OPL takes 16–35 % of core 1, in the LCD's waits (design.md §8.4) |
+| The gate again, `-timedemo` with audio | demo 1 **41.6**, demo 2 **43.8**, demo 3 **45.8**, demo 4 **32.1** fps (M5 without audio: 46.4, 48.0, 50.2, 35.7). Demo 4 is below 35; **accepted by the owner**, 2026-11-07 (Found) |
+| The late path forced (EL §6.4) | `PICOCALC_DOOM_AUDIO_STALL=30`: core 0's interrupts masked 30 ms every 5 s through music, 11 stalls: **2 late refills a stall**, no storm, no underrun, 96–99 refills a second throughout |
+
+### The output
+
+| Check | Result |
+|---|---|
+| PWM | GP26/27, slice 5, divider 1, **TOP 3016**, carrier 99,436 Hz, **49,718.26 Hz**, oversample 2; halves of 512 frames (10.3 ms), DMA 2 and 3, `DMA_IRQ_1` at `0x40` |
+| The refill interrupt | 0.5–0.9 % of core 0, longest 68–112 µs, 96–99 refills a second, no late refills outside the forced runs |
+| The refill path in SRAM | `cmake/check_sram.cmake` on every build: `audio_irq`, `gated_fill`, `audio_stage_fill`, upstream's `i2s_fill_audio`, and the SRAM `memcpy`/`memset` its object now calls; it fails the build on a flash target (checked against a function in flash) |
+| Level | upstream's mix peaks at 900–1,600 of 32,768; gain ×8, saturated, "right" by the owner (×1 "very quiet") |
+| Host tests | **8 of 8**, with `test_audio_stage`: the period, every 16-bit sample at four periods and three gains against a floating-point model, 4,000 halves across every slot boundary, underrun slots as silence (a one-word mutation fails it) |
+| Host engine: demo 1 against the list | passed (the sound module is not in the host engine) |
+| `check_sources.sh` | passed |
+
+### The levers (design.md §8.3)
+
+| demo 1 | `-timedemo` fps | Mix on core 0 | `-playdemo`: seconds below 35 drawn | presented a second |
+|---|---:|---:|---:|---:|
+| No audio (M5) | 46.4 | | | |
+| Upstream's mix, renderer in flash | 35.9 | 25–28 % | | |
+| EMU8950 and the mixer in SRAM | 37.3 | 19–25 % | 6 of 50 (31–34) | 37.6 |
+| Upstream's Thumb renderer instead | 37.3 | 21–25 % | | |
+| Vanilla's tic wait in `TryRunTics` | | 19 % | real drops to 27–32 | (frames capped at 35) |
+| OPL on core 1, between presents | | 4 % | 0 of 50 | **29.9** |
+| **OPL on core 1, in the LCD's waits (kept)** | **41.6** | **4–5 %** | **0 of 50** | **35.8** |
+
+The profile (core 0, demo 1, 20 s, the renderer in SRAM): EMU8950's slot
+functions about 18 %, `I_Pico_UpdateSound` 5.8 %, `audio_stage_fill`
+0.8 %. Demo 4 at real speed (`-playdemo demo4`) drew 23–33 frames in 12 of
+its 25 seconds with the OPL on core 0 *and* on core 1: its music is light
+(mix 4–8 %), so those dips are the renderer's, M5's narrow pass.
+
+### The owner's play
+
+1,050 seconds over two boots (The Ultimate Doom, then Doom II), the
+default development build. Core 0 busy 90.4 % mean, 50.5 frames drawn a
+second, 12 seconds below 35; presented 35.6 a second, most seconds 34–38,
+the few under 30 at loads and the WAD list. Stacks: core 0 2,004 of
+3,072 B, core 1 1,084 of 2,048 B. **Heap 5,536 of 9,632 B.** I²C errors 0.
+Log lines dropped 1,575.
+
+**The code**: `audio_shim.c` (Quest's PWM ring, the conversion with the
+gain, the counters, the gate on upstream's slots), `audio_stage.c` (the
+portable staging, host-tested), `opl_core1.c` (the OPL on core 1 through
+three link wraps), a heartbeat line each for the audio and the OPL, the
+heap's extent in the heartbeat, `DG_SleepMs()` topping up the mixer, and
+`cmake/check_sram.cmake`. `sram_sections.cmake` learns symbol
+redefinition and `ALL`. **The patch** gains one hunk: `i_picosound.c`
+read Doom's unsigned 8-bit sound lumps as signed (Found). Switches:
+`PICOCALC_DOOM_OPL_CORE1` (on), `PICOCALC_DOOM_MIX_SRAM` (on),
+`PICOCALC_DOOM_AUDIO_GAIN` (8), `PICOCALC_DOOM_OPL_ASM` (off),
+`PICOCALC_DOOM_AUDIO_STALL` (0, scratch).
+
+### Sizes
+
+| | M5, development | M6, development | M6, release |
+|---|---:|---:|---:|
+| `.text` | 318,832 | 297,272 | 271,896 |
+| `.rodata` | 142,732 | 141,508 | 134,052 |
+| Image (`.bin`) | 528,872 | 531,696 | 498,840 |
+| `.data` | 66,228 | 91,836 | 91,812 |
+| `.bss` | 397,140 | 416,352 | 412,204 |
+| SRAM left for the heap | 60,644 | **9,632** | about 13,800 |
+
+`.data` grew by the mixer and EMU8950's renderer in SRAM (about 24 KB);
+`.bss` by the PWM ring (8 KB), the staging buffer (5.7 KB), the OPL queue
+(4 KB) and its chunk (1 KB).
+
+### Found
+
+- **Every effect played over a full-scale buzz**: upstream read Doom's DMX
+  sound lumps, unsigned 8-bit, as signed. The owner heard it at once;
+  three lumps read from the WAD showed it (emulator-lessons.md §6.5).
+- **The mix is quiet**: peaks near −27 dBFS; ×8 in the conversion
+  (hardware-notes.md §5.10).
+- **EMU8950 costs 18 % of a core at 49,716 Hz on the M33**, from SRAM or
+  flash, in C or its RP2040 assembly (hardware-notes.md §5.11).
+- **The presenter waits for the LCD most of each row**, so core 1 hides
+  the OPL there (hardware-notes.md §5.11). Between frames it did not fit.
+- **The screen wipe never mixed**, so every level began with about 1.3 s
+  of silence; mixing from `DG_SleepMs()`, which the wipe calls each frame,
+  ended it (3 slots, then none).
+- **Demo 4 falls below the gate with audio**, 32.1 fps: audio still
+  costs core 0 about 6 % (the effects mixer and the interrupt), and
+  demo 4's M5 margin was 2 %. The copy into the pool (6.2 ms a frame) is
+  still the largest lever (M9, strategy C). **The owner accepted 32 fps for
+  demo 4 with audio** (2026-11-07); the copy by DMA stays M9's.
+- **The heap is down to 9.6 KB, with 5.5 KB used**: the SRAM code costs
+  24 KB of it. A PWAD that needs more heap would fail; `MIX_SRAM` off
+  gives back 24 KB, at a cost to core 0 (the effects mixer) and core 1
+  (EMU8950) from flash not yet measured with the OPL on core 1.
+- **A CMake option's new default again did not reach an existing build
+  directory** (as in M3): `MIX_SRAM` stayed off in `build/pico` until set.
+- **Captures begin with UART noise from the reset**, which makes `grep`
+  treat a log as binary and print nothing; `grep -a` with `LC_ALL=C`.
+
+### Not checked
+
+- The release build on a device; the Plus 2.
+- `doom1.wad`, Freedoom, Plutonia, TNT, a PWAD's music.
+- Doom's sound and music volume settings in the menu, by ear (M8 saves them).
+- The effect latency (up to 114 ms by construction, §8.3) by ear.
+- A soak longer than 18 minutes (M9).
+- Late halves from core 1 under the heaviest music with the heaviest
+  scene: 2 in 18 minutes of play, 1 in demo 3.
+
 ## M5: first play, and the gate
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,

@@ -51,7 +51,8 @@ Build each variant in its own directory.
 - The LCD is touched only from core 1, in thread context. No interrupt
   masking around a blit.
 - Core 1 never reads engine memory; only a published pool buffer and the
-  palette that came with it.
+  palette that came with it, and a published mix slot and EMU8950's state
+  (§8.4).
 - No `sleep_*` on core 1; it waits with `busy_wait_us_32`. Anything moved
   onto core 1 is searched for `sleep_`.
 - Core 0 never blocks on the UART; stdio goes into the log ring.

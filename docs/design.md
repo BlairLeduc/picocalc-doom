@@ -106,7 +106,7 @@ on them.
 | D8 | 2026-11-06 | Start from `picocalc-quest`'s PicoCalc layer and tools, by copy, rename, re-verify (EL §14.6); it ports the same upstream author's sibling project, with the same HDMI, I²S, PS/2 and SD code. | Settled 2026-11-06 |
 | D9 | 2026-11-06 | Licence the port's own code **GPL-2.0-or-later**, and relicense the owner's copied Quest code to match (§5.5). Upstream ships GPL-2.0's text, and some of its own files carry no notice, so GPL-3.0-only code could not be combined with them. | Settled 2026-11-06 |
 | D10 | 2026-11-06 | No internal flash writes. Settings, Doom's configuration and saves live on the card (HW §7.1, EL §8.7). | Proposed |
-| D11 | 2026-11-06 | Keep upstream's audio shape (mixing in the game loop, the IRQ only copying), and run the PWM at **49,718 Hz**, the OPL emulator's own rate, so no rate converter is needed (§8). | Proposed |
+| D11 | 2026-11-06 | Keep upstream's audio shape (mixing in the game loop, the IRQ only copying), and run the PWM at **49,718 Hz**, the OPL emulator's own rate, so no rate converter is needed (§8). | Settled 2026-11-07 (M6); the OPL's rendering moved to core 1 in M6, with the owner's word (§8.4) |
 | D12 | 2026-11-06 | The key map of §9.2: arrows move and turn, Ctrl fires, Space uses, Alt and `,` `.` strafe, running is always on, **Shift is bound to nothing in play**. | Accepted 2026-11-07 for M4; settled by the owner's play-testing in M7 |
 | D13 | 2026-11-06 | The port draws its own WAD list, and boots straight into the game when the card has one IWAD or `picocalc.ini` names one (§13.1). | Settled 2026-11-07 |
 | D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Esc in the WAD list taking this path settled 2026-11-07 (M4); Doom's Quit proposed, for M8 |
@@ -386,8 +386,9 @@ synchronously, from wherever it is.
 | Core 0 | Core 1 |
 |---|---|
 | Doom: game logic, renderer, menus | LCD presenting (§7) |
-| Mixing (music and effects) in the game loop (§8) | Southbridge I²C: keyboard FIFO, battery (§9) |
-| The audio DMA IRQ at priority `0x40`: a copy and a conversion (§8) | Draining the log ring to UART0 (§14.2) |
+| Mixing the effects, and the music's sequencer, in the game loop (§8) | Southbridge I²C: keyboard FIFO, battery (§9) |
+| The audio DMA IRQ at priority `0x40`: a copy and a conversion (§8) | Rendering the OPL music into each mixed slot, in the LCD's waits (§8.4) |
+| | Draining the log ring to UART0 (§14.2) |
 | SD card and FatFs, as the engine asks | Pages: the WAD list, errors, exit (§13) |
 | The key map: held set to Doom key events (§9.1) | |
 
@@ -402,8 +403,9 @@ synchronously, from wherever it is.
  │   (PSRAM) + palette          ├───────────────► │   palette → RGB565 rows    │
  │ DG_DrawFrame = publish       │                 │   DMA to LCD, rows 40–279  │
  │                              │                 │ release buffer             │
- │ I_UpdateSound: OPL + SFX     │                 │                            │
- │   → mix ring (4 tics)        │                 │                            │
+ │ I_UpdateSound: SFX + MUS     │  slot + writes  │ OPL: replay writes, render │
+ │   → mix ring (4 tics)        ├───── SPSC ─────►│   music into the slot      │
+ │                              │  slot done      │   (in each row's LCD wait) │
  │ DMA IRQ (0x40): ring → PWM   │   log ring      │ pump log → UART0           │
  │ SD/FatFs (spi0)              ├───────────────► │                            │
  └──────────────────────────────┘                 └────────────────────────────┘
@@ -414,7 +416,9 @@ synchronously, from wherever it is.
 - **The LCD is touched only from core 1, in thread context** (HW §5.7). No
   interrupt masking around a blit.
 - **Core 1 never reads engine memory.** It reads only a published pool
-  buffer and the palette that came with it (§7.2).
+  buffer and the palette that came with it (§7.2), and, since M6, a
+  published mix slot and EMU8950's state, which core 0 creates at init and
+  never touches again (§8.4).
 - **No `sleep_*` on core 1**; it waits with `busy_wait_us_32` (HW §9.7).
 - **Core 0 never blocks on the UART.** stdio goes into the log ring
   (§14.2).
@@ -612,9 +616,18 @@ A signed 16-bit sample becomes `((s × 3,017) >> 16) + 1,508` about the
 mid-point; the conversion is pure code with a host test against an
 independent model (§15).
 
+**The gain (M6).** Upstream's mix peaks near 1,500 of 32,768 in play
+(its effects are divided by 16, to leave room for the music), which the
+owner found very quiet. The conversion multiplies by
+`PICOCALC_DOOM_AUDIO_GAIN`, 8, before scaling, saturated, so those peaks
+reach about 12,000: `v = 1,508 + ((s × 8 × 3,017) >> 16)`, within 0..3,016
+(HW §5.10).
+
 ### 8.2 The shim
 
-Upstream's `i_picosound.c` is kept unchanged. It calls `i2s_init()`,
+Upstream's `i_picosound.c` is kept but for one hunk (M6): it read Doom's
+DMX sound lumps, which are unsigned 8-bit, as signed, a full-scale buzz
+under every effect; the patch flips the top bit (EL §6.5). It calls `i2s_init()`,
 `i2s_set_fill_callback()` and `i2s_start()`, and its fill callback hands
 over one slot of the mix ring, 1,421 stereo frames, or silence. The port's
 `audio_shim.c` implements those names:
@@ -634,6 +647,16 @@ loop, and the mix ring's indices are written one side each, so no lock
 masks the IRQ, which removes the class of fault Quest found in Cabal's
 `lockMutex()` (Quest §8.2, HW §5.9).
 
+**The refill path in SRAM, without a patch.** Upstream's callback
+`i2s_fill_audio()` is static and calls the library's `memcpy` and `memset`,
+in flash. After compiling, `cmake/sram_sections.cmake` renames its section
+to `.time_critical`, and redefines `memcpy` and `memset` in
+`i_picosound.c`'s object only, to the shim's SRAM copies. Those count too:
+the callback's `memcpy` is a slot played, its `memset` an empty ring. A
+post-build step, `cmake/check_sram.cmake`, follows every branch from the
+interrupt handler (and the callbacks it reaches by pointer) and fails the
+build on any target outside SRAM or any veneer.
+
 ### 8.3 Costs and counters
 
 **Producer starvation is the expected failure, not late refills.** The game
@@ -647,12 +670,64 @@ already running on entry), the IRQ's longest run, and mixing's share of
 core 0, timed around `I_UpdateSound()`. The late path is forced once with a
 scratch build (EL §6.4).
 
-**Unknown, measured in M6:** EMU8950's cost on a Cortex-M33 at 300 MHz.
+**Unknown before M6, measured below:** EMU8950's cost on a Cortex-M33 at 300 MHz.
 `rp2040-doom` ran it on a Cortex-M0+; Quest measured MAME's and DOSBox's
 OPL at 13–55 % of core 0 at 36,621 Hz (HW §5.5), and EMU8950 with its
 slot renderer is built to be lighter than either. If it costs too much,
 the levers in order: the slot renderer and mixer in SRAM (HW §9.2); mixing
 on core 1, if the gate leaves it room (§7.4 says it will not have much).
+
+**Measured (M6).** The refill interrupt: 0.5–0.9 % of core 0, longest
+68–111 µs, no late refills in any run. Mixing in the game loop, upstream
+unchanged: **22–28 % of core 0** with music, 6–8 ms a slot; of that, EMU8950
+about 18 % (some 1,100 cycles a sample, 18 operators at 49,716 Hz), the
+effects mixer about 5 %. With it, `-timedemo demo1` fell from 46.4 to 35.9
+fps, and at real speed (`-playdemo demo1`) 6 of 50 seconds drew 31–34
+frames. The levers, each against the last:
+
+| Lever | demo 1 `-timedemo` | Mix on core 0 | Result |
+|---|---:|---:|---|
+| None (renderer in flash) | 35.9 | 25–28 % | |
+| EMU8950's renderer and buffer loop in SRAM | 37.3 | 22–25 % | small; the cost is compute |
+| Upstream's Thumb renderer (`EMU8950_ASM`) | 37.3 | 21–25 % | no faster, and 656 B off core 0's stack; dropped |
+| Vanilla's tic wait in `TryRunTics` | (n/a) | 19 % | turns repeat frames to sleep; the dips stayed; dropped |
+| **The OPL rendered on core 1** (§8.4) | see §16 M6 | **4–5 %** | kept |
+
+`PICOCALC_DOOM_MIX_SRAM`, on by default, puts the effects mixer
+(`I_Pico_UpdateSound`) and EMU8950's renderer (all of `slot_render.cpp`,
+`OPL_calc_buffer_*`) in SRAM, by the same section renaming: about 16 KB,
+which leaves the heap 23,048 B, of which play used 6,664 (M6).
+
+### 8.4 The music on core 1 (M6)
+
+Core 0 keeps upstream's music sequencer; core 1 renders the chip. Three
+link wraps, no patch (`picocalc/opl_core1.c`):
+
+- `I_PicoSoundSetMusicGenerator()`: the port's generator is installed at
+  `i2s_start()` and stays, so every slot upstream mixes passes through it;
+  upstream's OPL generator, when set, is called from it.
+- `OPL_writeReg()`: each register write goes into a single-producer queue
+  (1,024 words) with its sample offset in the slot being mixed.
+- `OPL_calc_buffer_stereo()`: renders nothing on core 0; it writes
+  silence, so upstream's slot holds the effects alone, and advances the
+  offset.
+
+A slot is complete when upstream has mixed it: at the next slot's
+generator call, or when `I_UpdateSound()` returns. Then a marker (the
+slot's address, frames, music or not) publishes it. Core 1 replays the
+writes into EMU8950 at their offsets, renders the music between them, and
+adds it into the slot, saturated; then counts the slot done. **The refill
+interrupt takes a slot from upstream's ring only once it is done**
+(`gated_fill`), so no slot is touched by two parties at once: core 0 until
+it is published, core 1 until it is done, the interrupt after. Silence
+while core 1 is behind is counted apart from underruns.
+
+Core 1 renders in steps of 8 samples, **after each row is handed to the
+LCD's DMA**, for up to 50 µs, inside the row's 68 µs transfer, which it
+would otherwise spend waiting; and what is left from its loop. Rendering
+between presents instead left core 1 presenting 30 frames a second
+(present 590 ms, OPL 230 ms, keyboard polls 150 ms of each second); in the
+LCD's waits it presents 36, the present 20.4 ms against 19.7.
 
 **Effect latency.** A sound started now is mixed into the next free slot,
 behind up to four tics already mixed: up to ~114 ms late. If the owner
@@ -1456,7 +1531,9 @@ recorded. **Measured**: fps per demo, busy share per level, the profile.
 
 **Done when** effects and OPL music play correctly by ear (pitch, speed,
 no carrier whine) in E1M1 and a Doom II map if owned, through the speakers
-and the headphone jack. **Measured**: mixing's share of core 0 per tic with
+and the headphone jack. (Met 2026-11-07. The gate with audio: 41.6, 43.8, 45.8
+and 32.1 fps for The Ultimate Doom's four demos; the owner accepted demo
+4's 32, and the copy by DMA stays M9's first lever.) **Measured**: mixing's share of core 0 per tic with
 music; underruns over ten minutes of play and across level loads; the gate
 again, `-timedemo` with audio on.
 
