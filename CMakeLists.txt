@@ -154,7 +154,9 @@ else()
         picocalc/page.c
         picocalc/psram_check.c
         picocalc/render_sram.c
+        picocalc/settings.c
         picocalc/southbridge.c
+        picocalc/status.c
         picocalc/video_shim.c
     )
     set_source_files_properties(${PICOCALC_DOOM_SOURCES} PROPERTIES

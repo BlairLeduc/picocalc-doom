@@ -26,6 +26,7 @@
 #include "input.h"
 #include "kbd.h"
 #include "keymap.h"
+#include "settings.h"
 
 #include <stdio.h>
 
@@ -108,7 +109,10 @@ static void refill(void) {
         case KM_REPEAT:  g_input.repeats++; continue;
         case KM_STRAY:   g_input.stray++; continue;
         case KM_UNKNOWN: g_input.unknown++; continue;
-        case KM_CONSUMED: continue;
+        case KM_CONSUMED:
+            /* Caps Lock changes the run mode in play (§9.4). */
+            if (state == MCU_PRESSED && code == MCU_CAPS) settings_toggle_run();
+            continue;
         }
         s_pending_n = n;
         s_pending_at = 0;

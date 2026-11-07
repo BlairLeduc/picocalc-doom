@@ -107,10 +107,10 @@ on them.
 | D9 | 2026-11-06 | Licence the port's own code **GPL-2.0-or-later**, and relicense the owner's copied Quest code to match (§5.5). Upstream ships GPL-2.0's text, and some of its own files carry no notice, so GPL-3.0-only code could not be combined with them. | Settled 2026-11-06 |
 | D10 | 2026-11-06 | No internal flash writes. Settings, Doom's configuration and saves live on the card (HW §7.1, EL §8.7). | Proposed |
 | D11 | 2026-11-06 | Keep upstream's audio shape (mixing in the game loop, the IRQ only copying), and run the PWM at **49,718 Hz**, the OPL emulator's own rate, so no rate converter is needed (§8). | Settled 2026-11-07 (M6); the OPL's rendering moved to core 1 in M6, with the owner's word (§8.4) |
-| D12 | 2026-11-06 | The key map of §9.2: arrows move and turn, Ctrl fires, Space uses, Alt and `,` `.` strafe, running is always on, **Shift is bound to nothing in play**. | Accepted 2026-11-07 for M4; settled by the owner's play-testing in M7 |
+| D12 | 2026-11-06 | The key map of §9.2: arrows move and turn, Ctrl fires, Space uses, Alt and `,` `.` strafe, running is always on, **Shift is bound to nothing in play**. | **Settled 2026-11-07** by the owner's play-testing (M7): the bindings as they are, Caps Lock toggling running, the poll as it is |
 | D13 | 2026-11-06 | The port draws its own WAD list, and boots straight into the game when the card has one IWAD or `picocalc.ini` names one (§13.1). | Settled 2026-11-07 |
 | D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Esc in the WAD list taking this path settled 2026-11-07 (M4); Doom's Quit proposed, for M8 |
-| D15 | 2026-11-06 | Take Doom command-line arguments from the shell (`picocalc-doom -file sigil.wad -warp 1 1`) and from `picocalc.ini`'s `args` (§13.4). | Proposed |
+| D15 | 2026-11-06 | Take Doom command-line arguments from the shell (`picocalc-doom -file sigil.wad -warp 1 1`) and from `picocalc.ini`'s `args` (§13.4). | `picocalc.ini`'s `args` accepted 2026-11-07 (M7); the shell's proposed, for M8 |
 | D16 | 2026-11-06 | The project is a git repository on GitHub, `BlairLeduc/picocalc-doom`, with upstream as a submodule; each milestone lands as a pull request with CI (EL §14.7). | Settled |
 
 ---
@@ -308,7 +308,7 @@ at all.
 | `DG_DrawFrame`, `DG_ScreenBuffer` | `doomgeneric_rp2350.c` | `picocalc/video_shim.c`: publish the frame and its palette to the pool, claim the next (§7.2) |
 | `DG_GetKey` | `doomgeneric_rp2350.c` | `picocalc/input_shim.c`: pop the key map's queue (§9) |
 | `DG_GetTicksMs`, `DG_SleepMs` | `doomgeneric_rp2350.c` | `picocalc/dg_picocalc.c`: the system timer; the sleep timed for the heartbeat's busy share (§14.3) |
-| `I_Error`, `I_Quit`, `I_AtExit`, `I_ZoneBase`, `I_Realloc`, `I_Init`, `I_Print*`, `I_Tactile`, `I_GetMemoryValue`, `I_ConsoleStdout`, `I_InitJoystick`, `I_BindJoystickVariables` | `doomgeneric_rp2350.c` | `picocalc/dg_picocalc.c` and `picocalc/fatal.c`: an error page; exit through the at-exit list (§13) |
+| `I_Error`, `I_Quit`, `I_AtExit`, `I_ZoneBase`, `I_Realloc`, `I_Init`, `I_Print*`, `I_Tactile`, `I_GetMemoryValue`, `I_ConsoleStdout`, `I_InitJoystick`, `I_BindJoystickVariables` | `doomgeneric_rp2350.c` | `picocalc/dg_picocalc.c` and `picocalc/fatal.c`: an error page; exit through the at-exit list (§13); `I_InitJoystick()`, which Doom calls after loading `default.cfg`, applies the run setting (§9.4) |
 | `i2s_init`, `i2s_deinit`, `i2s_set_fill_callback`, `i2s_start`, … | `src/pico/audio.c` | `picocalc/audio_shim.c` over the PWM ring (§8) |
 
 The patch, **expected**, to be confirmed as each milestone reaches it:
@@ -320,7 +320,7 @@ The patch, **expected**, to be confirmed as each milestone reaches it:
 | `src/doomgeneric/doomgeneric/w_wad.c` | `ExtendLumpInfo()` allocates the WAD directory from PSRAM, not the SRAM heap (§12.1) | M3, done |
 | `src/doomgeneric/doomgeneric/v_video.c` | `V_DrawPatch` centres and crops a patch wider than the screen (§7.6) | M2, done |
 | `src/doomgeneric/doomgeneric/r_plane.c` | The sky's texture centred no higher than the view's centre, so a view taller than 200 rows does not wrap it (§7.7) | M3, done |
-| `src/doomgeneric/doomgeneric/d_main.c` | After Doom loads its configuration, `picocalc.ini`'s run choice is applied: always on by default (§9.4) | M7 |
+| `src/doomgeneric/doomgeneric/d_main.c` | ~~After Doom loads its configuration, `picocalc.ini`'s run choice is applied~~: not needed; a shim in `I_InitJoystick()` does it (§9.4) | M7, no patch |
 | `src/doomgeneric/doomgeneric/r_data.c` | Perhaps: the colormaps copied into SRAM (§16, M5's levers) | M5 or M9 |
 
 Each patched hunk carries a comment citing the section of this document
@@ -758,8 +758,9 @@ which `DG_GetKey()` returns one at a time.
   (HW §6.1), about 24 % of core 1 at 50 Hz, polled between presents.
   **Measured in M4**: 50 a second with no frames, but 27–36 in play,
   since at 32–34 frames a second each 19 ms present is followed by one
-  poll. M7 settles the rate; polling between the present's rows reaches
-  50 Hz if it is wanted.
+  poll. **Settled in M7**: kept; 32–50 polls a second in play, median 36,
+  and the owner found the keys responsive. Polling between the present's
+  rows would reach 50 Hz if it is ever wanted.
 - **Latency, estimated**: up to one MCU scan (≤ 26 ms), one poll (≤ 20 ms),
   one tic (≤ 28.6 ms) and one render and present (~30 ms), so 50–100 ms
   from finger to panel. **Measured in M4**, from the FIFO read: to
@@ -776,7 +777,7 @@ which `DG_GetKey()` returns one at a time.
   (`saveStringEnter`), Space, `,` and `.` type themselves instead of Use
   and strafe; doomgeneric's own platforms send Use for Space there.
 
-### 9.2 Key map (D12, proposed)
+### 9.2 Key map (D12, settled in M7)
 
 | PicoCalc | Code | Doom |
 |---|---|---|
@@ -797,12 +798,13 @@ which `DG_GetKey()` returns one at a time.
 | Break (Shift+Esc) | shifted alternate | Pause |
 | Letters | ASCII | Lower-cased, for cheats and save names |
 | Shift | `0xa2`/`0xa3` | **Nothing in play**; still resolves typed characters in the MCU |
-| Caps Lock | `0xc1` | Accepted, not passed on |
+| Caps Lock | `0xc1` | **Running on and off** in play (§9.4); not passed on |
 | Power button | `0x91` | Accepted, not passed on |
 
 **Running is always on** (D12): Doom's run key is Shift by default, and
-Shift cannot be used (§9.3). `picocalc.ini` can turn it off, or put running
-on a held key the MCU delivers with the arrows (§10.3). The bindings are
+Shift cannot be used (§9.3). Caps Lock turns it off and on again in play,
+and the bottom band says which (§7.5). `picocalc.ini` can start with it off,
+or put running on a held key the MCU delivers with the arrows (§10.3). The bindings are
 set as Doom's own `key_*` variables (§9.4), so a player can still change
 them in `default.cfg`.
 
@@ -841,8 +843,17 @@ The port's map sends Doom's own key codes (`KEY_FIRE`, `KEY_USE`,
 button (the "`joyb_speed = 31`" hack Chocolate Doom keeps). So `run =
 always` sets `joyb_speed` to 31; `run = hold` sets `key_speed` to the run
 key; `run = off` leaves `key_speed` at upstream's `KEY_RSHIFT`, which the
-key map never sends. One hunk in `d_main.c`, after Doom loads its
-configuration, applies `picocalc.ini`'s choice (§5.3).
+key map never sends. Doom calls `I_InitJoystick()`, which is the port's,
+after `M_LoadDefaults()`, so the port sets both there and wins over
+`default.cfg`: a shim, not the `d_main.c` hunk first planned (§5.3).
+
+**Caps Lock** flips between always running and the setting's other state
+(walking, or running on the held `run_key` when `run = hold`), from the
+first tic; before Doom starts (the WAD list, a page) it does nothing. The
+band shows "Always running" or "Walking" for three seconds. The flip is not
+saved: each start begins at `picocalc.ini`'s `run`. Doom saves
+`joyb_speed = 31` in `default.cfg` (M8) when running is always on; harmless,
+since the port sets it again at every start.
 
 ### 9.5 What M4 found out
 
@@ -966,6 +977,15 @@ args      = -file sigil.wad -skill 3     more Doom arguments (D15)
 run       = always         always, or hold (on the key below), or off
 run_key   = z              the key that runs when run = hold; never Shift
 ```
+
+`iwad` is a file name in `/doom` that Doom's IWAD table knows; one that is
+not on the card is named in the band and the WAD list shown. `args` go
+after `-iwad`, so an `-iwad` in them replaces both `iwad` and the list.
+`run_key` is one key the PicoCalc types without Shift that neither the key
+map (§9.2) nor Doom's own defaults (weapon 8, the automap's `0` `f` `g`
+`m` `c`) use: a letter such as `z`, `9`, or `;` `'` `[` `]` `\` `/` `` ` ``.
+`run = hold` with no `run_key` is named, and running stays always. The
+file is read into the PSRAM and let go; past 2 KB it is cut at a line.
 
 Volumes, bindings, screen size, gamma and messages are Doom's, in its own
 menus and `default.cfg`. A line that cannot be used is logged with its
@@ -1541,20 +1561,25 @@ again, `-timedemo` with audio on.
 
 - Play-testing with the owner settles D12: the bindings, always-run, the
   strafe keys, whether Alt+arrows feel right, the poll rate.
-- The `d_main.c` hunk applying the port's defaults (§9.4).
+- The port's run setting applied after `default.cfg` loads (§9.4): a shim
+  in `I_InitJoystick()`, not the `d_main.c` hunk first planned; Caps Lock
+  toggling it.
 - `picocalc.ini` (§10.3) with its host test; the bottom band's messages.
 
 **Done when** the owner plays a full episode-1 level comfortably on the
 PicoCalc's keyboard and the bindings are recorded as D12's settlement; a
 settings file with a bad line boots with the line named and the rest
 applied. **Measured**: key-to-motion latency again at the settled poll rate.
+(Met 2026-11-07: the bindings kept as they were; a press to the next
+frame a median of 30 ms after its FIFO read.)
 
 ### M8: Saves, configuration, exit, time, arguments
 
 - The at-exit list and `I_Quit()` of §13.3; exit to the shell or power off.
 - `get_fattime()` from the shell's clock (§13.2).
 - Saves per IWAD (§10.2), if the owner agrees.
-- Arguments from the shell (§13.4), if D15 is accepted.
+- Arguments from the shell (§13.4), if D15 is accepted for them
+  (`picocalc.ini`'s `args` came in M7).
 
 **Done when** a save made in Doom loads after a power cycle; a change made
 in Doom's options menu survives a quit and a power cycle; F10 then `y`

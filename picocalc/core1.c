@@ -24,6 +24,7 @@
 #include "log.h"
 #include "page.h"
 #include "southbridge.h"
+#include "status.h"
 #include "video.h"
 
 /* The battery is refreshed by the MCU every 20 s (hardware-notes.md §6);
@@ -335,6 +336,10 @@ void core1_main(void) {
             present(frame);
             video_release(frame);
         }
+
+        /* The bottom band's message (§7.5), once the first frame has
+         * cleared the bands and while no page covers them. */
+        status_service(time_us_32(), page == PAGE_NONE && bands_cleared);
 
         /* The keyboard (§9.1): the MCU's FIFO every KBD_POLL_US, between
          * presents, and in the development build the UART's keys every
