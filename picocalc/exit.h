@@ -2,8 +2,8 @@
  *
  * To the shell when UF2 Loader started the port and a card is in
  * (picocalc_shell.h), and otherwise powering the PicoCalc off through the
- * southbridge, if its firmware can. M4 leaves from the WAD list's Esc;
- * Doom's own Quit joins in M8, after the at-exit list. From
+ * southbridge, if its firmware can. From the WAD list's Esc (M4), and
+ * from Doom's own Quit after the at-exit list (I_Quit(), M8). From
  * picocalc-quest's exit.c (D8).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later

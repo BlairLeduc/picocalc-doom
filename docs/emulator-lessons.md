@@ -1466,6 +1466,44 @@ format (§8.5) covers the user's saves.
 
 ---
 
+### 8.9 An upstream's own configuration file
+
+When the port keeps an upstream program's own settings file (a game's
+`default.cfg`, say) rather than a file of its own, check that the file
+really goes round, on the host, before the device:
+
+- **"Saved on quit" can be dead code.** An embedded fork may compile its
+  reader and writer out (behind the original platform's `#if`), so wiring
+  the quit path up saves nothing, and the file is never read either. Read
+  the functions themselves, not only their callers.
+- **A FatFs stdio shim covers what the fork used, not what the writer
+  uses.** Link-time wraps of `fopen`, `fread` and `fwrite` that hand back a
+  `FIL *` as a `FILE *` leave `fprintf`, `fscanf` and `feof` on the C
+  library's, which read the `FILE` fields a `FIL` does not have (newlib's
+  `feof` is a macro over them). And a "quiet" header that defines
+  `fprintf(...)` as `0` for the release build makes the writer produce an
+  empty file there, over the user's settings. Give the writer's file its
+  own versions, after every other include, and check the release binary's
+  calls, not only the development build's.
+- **Read a line, then scan it.** `fscanf(f, "%79s %99[^\n]\n", ...)` on a
+  stream can stall on a line that does not match; reading a line and
+  `sscanf`-ing it always moves on, so a bad line costs only itself.
+- **The file's encoding may not hold the port's own values.** Doom keeps a
+  key as its DOS scan code and reads a number past 127 back as "unbound";
+  doomgeneric's own codes for fire, use and strafing (160–163) have no scan
+  code, so a save and a load silently unbound the port's main keys. A host
+  test that saves the defaults, loads them and compares every binding finds
+  this at once; the device would have shown it as "the keys stopped
+  working after I quit once".
+- **A library's fallback for a failed allocation never runs if `malloc`
+  panics.** FatFs, with its buffers on the heap, asks for up to 32 KB to
+  clear a new directory and halves the request on each NULL, clearing
+  sector by sector if none is given; the Pico SDK's `malloc` panics
+  instead of returning NULL, so on a short heap the first `f_mkdir` that
+  really makes a directory stops the program. It hides until a card lacks
+  the directory: test with the directories the program makes absent.
+  Wrap the library's allocator so a request that cannot fit gets NULL.
+
 ## 9. Timing and clocks
 
 ### 9.1 The guest's field

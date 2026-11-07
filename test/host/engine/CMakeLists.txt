@@ -68,3 +68,30 @@ set_tests_properties(test_engine_demo1 PROPERTIES SKIP_RETURN_CODE 77)
 # Doom uses POSIX and BSD calls (strdup, strcasecmp) and dg_host.c uses
 # clock_gettime: GNU C, so glibc declares them, as Chocolate Doom builds.
 set_target_properties(doom_host PROPERTIES C_EXTENSIONS ON)
+
+# Doom's configuration files through the patched m_config.c, with the
+# port's stdio for them (picocalc/config_stdio.h, §13.3): saved, loaded,
+# a file written by hand, and the four bindings the file cannot hold.
+add_executable(test_config_file test_config_file.c
+    ${engine_dir}/m_config.c
+    ${engine_dir}/m_controls.c
+    ${engine_dir}/m_argv.c
+    ${engine_dir}/m_misc.c
+)
+set_source_files_properties(test_config_file.c PROPERTIES
+    COMPILE_OPTIONS "${PICOCALC_DOOM_WARNINGS}")
+target_include_directories(test_config_file PRIVATE
+    ${PROJECT_SOURCE_DIR}/picocalc
+    ${engine_dir}
+    ${PICOCALC_DOOM_UPSTREAM}/src
+)
+# For the target, not m_config.c's source property, which doom_host's
+# m_config.c in this directory would share; only m_config.c reads it.
+target_compile_definitions(test_config_file PRIVATE
+    ${PICOCALC_DOOM_ENGINE_DEFINITIONS}
+    FRANK_DOOM_QUIET=0
+    PICOCALC_DOOM_CONFIG_FILES=1
+)
+set_target_properties(test_config_file PROPERTIES C_EXTENSIONS ON)
+add_test(NAME test_config_file COMMAND test_config_file
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

@@ -140,6 +140,7 @@ else()
         picocalc/clock.c
         picocalc/core1.c
         picocalc/dg_picocalc.c
+        picocalc/doom_files.c
         picocalc/exit.c
         picocalc/font8x10.c
         picocalc/frame_hash.c
@@ -155,6 +156,7 @@ else()
         picocalc/psram_check.c
         picocalc/render_sram.c
         picocalc/settings.c
+        picocalc/shell_args.c
         picocalc/southbridge.c
         picocalc/status.c
         picocalc/video_shim.c
@@ -178,6 +180,12 @@ else()
         ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/s_sound.c
         ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/wi_stuff.c
         PROPERTIES COMPILE_OPTIONS "-UFRANK_DOOM_QUIET;-DFRANK_DOOM_QUIET=1")
+
+    # Doom's configuration files read and written on the card (§13.3): the
+    # patch compiles m_config.c's file code back in with this, and its
+    # stdio calls go to FatFs (picocalc/config_stdio.h).
+    set_property(SOURCE ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/m_config.c
+        APPEND PROPERTY COMPILE_DEFINITIONS PICOCALC_DOOM_CONFIG_FILES=1)
 
     add_executable(picocalc-doom
         ${PICOCALC_DOOM_SOURCES}
@@ -364,6 +372,13 @@ else()
         # and each WAD's open and directory (picocalc/dg_picocalc.c).
         -Wl,--wrap=I_FinishUpdate
         -Wl,--wrap=W_AddFile
+        # A save directory for each game (picocalc/doom_files.c, §10.2).
+        -Wl,--wrap=M_GetSaveGameDir
+        # A save's write, timed (picocalc/doom_files.c, M8).
+        -Wl,--wrap=P_TempSaveGameFile
+        -Wl,--wrap=R_FillBackScreen
+        # FatFs's buffers kept from malloc()'s panic (picocalc/doom_files.c).
+        -Wl,--wrap=ff_memalloc
         # Mixing's share (picocalc/audio_shim.c, §8.3).
         -Wl,--wrap=I_UpdateSound
         # The OPL on core 1 (picocalc/opl_core1.c, §8.3).

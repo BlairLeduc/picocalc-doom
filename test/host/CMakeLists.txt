@@ -57,3 +57,13 @@ target_include_directories(test_settings PRIVATE ${PROJECT_SOURCE_DIR}/picocalc)
 target_compile_definitions(test_settings PRIVATE PICOCALC_DOOM_HOST=1)
 target_compile_options(test_settings PRIVATE ${PICOCALC_DOOM_WARNINGS})
 add_test(NAME test_settings COMMAND test_settings)
+
+# The shell's words as Doom's arguments: files made paths from the user's
+# directory, demos by name left alone, the DOS flavour's switches (§13.4).
+# picocalc_shell.h includes SDK headers; fake_sdk/ declares what it needs.
+add_executable(test_shell_args test_shell_args.c ${PROJECT_SOURCE_DIR}/picocalc/shell_args.c)
+target_include_directories(test_shell_args PRIVATE ${PROJECT_SOURCE_DIR}/picocalc
+    ${CMAKE_CURRENT_SOURCE_DIR}/fake_sdk)
+target_compile_definitions(test_shell_args PRIVATE PICOCALC_DOOM_HOST=1)
+target_compile_options(test_shell_args PRIVATE ${PICOCALC_DOOM_WARNINGS})
+add_test(NAME test_shell_args COMMAND test_shell_args)

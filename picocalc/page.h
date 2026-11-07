@@ -28,6 +28,7 @@ typedef enum {
     PAGE_WAD_LIST,     /* the IWADs to choose from (D13)             */
     PAGE_TO_SHELL,     /* leaving to the shell (§13.3)               */
     PAGE_POWER_OFF,    /* the southbridge is switching off (§13.3)   */
+    PAGE_CANNOT_LEAVE, /* Doom quit, with no shell and no power off  */
 } page_t;
 
 /* The longest message a page shows; longer is cut. */

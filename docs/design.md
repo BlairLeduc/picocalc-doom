@@ -105,12 +105,12 @@ on them.
 | D7 | 2026-11-06 | Ship at **300 MHz**, core rail 1.20 V, not upstream's 252 MHz at 1.50 V (§11.1). | Settled 2026-11-06 for bring-up; confirmed or revised at the M5 gate |
 | D8 | 2026-11-06 | Start from `picocalc-quest`'s PicoCalc layer and tools, by copy, rename, re-verify (EL §14.6); it ports the same upstream author's sibling project, with the same HDMI, I²S, PS/2 and SD code. | Settled 2026-11-06 |
 | D9 | 2026-11-06 | Licence the port's own code **GPL-2.0-or-later**, and relicense the owner's copied Quest code to match (§5.5). Upstream ships GPL-2.0's text, and some of its own files carry no notice, so GPL-3.0-only code could not be combined with them. | Settled 2026-11-06 |
-| D10 | 2026-11-06 | No internal flash writes. Settings, Doom's configuration and saves live on the card (HW §7.1, EL §8.7). | Proposed |
+| D10 | 2026-11-06 | No internal flash writes. Settings, Doom's configuration and saves live on the card (HW §7.1, EL §8.7). | Settled 2026-11-07 (M8) |
 | D11 | 2026-11-06 | Keep upstream's audio shape (mixing in the game loop, the IRQ only copying), and run the PWM at **49,718 Hz**, the OPL emulator's own rate, so no rate converter is needed (§8). | Settled 2026-11-07 (M6); the OPL's rendering moved to core 1 in M6, with the owner's word (§8.4) |
 | D12 | 2026-11-06 | The key map of §9.2: arrows move and turn, Ctrl fires, Space uses, Alt and `,` `.` strafe, running is always on, **Shift is bound to nothing in play**. | **Settled 2026-11-07** by the owner's play-testing (M7): the bindings as they are, Caps Lock toggling running, the poll as it is |
 | D13 | 2026-11-06 | The port draws its own WAD list, and boots straight into the game when the card has one IWAD or `picocalc.ini` names one (§13.1). | Settled 2026-11-07 |
-| D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Esc in the WAD list taking this path settled 2026-11-07 (M4); Doom's Quit proposed, for M8 |
-| D15 | 2026-11-06 | Take Doom command-line arguments from the shell (`picocalc-doom -file sigil.wad -warp 1 1`) and from `picocalc.ini`'s `args` (§13.4). | `picocalc.ini`'s `args` accepted 2026-11-07 (M7); the shell's proposed, for M8 |
+| D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Esc in the WAD list taking this path settled 2026-11-07 (M4); Doom's Quit settled 2026-11-07 (M8) |
+| D15 | 2026-11-06 | Take Doom command-line arguments from the shell (`picocalc-doom -file sigil.wad -warp 1 1`) and from `picocalc.ini`'s `args` (§13.4). | `picocalc.ini`'s `args` accepted 2026-11-07 (M7); the shell's settled 2026-11-07 (M8) |
 | D16 | 2026-11-06 | The project is a git repository on GitHub, `BlairLeduc/picocalc-doom`, with upstream as a submodule; each milestone lands as a pull request with CI (EL §14.7). | Settled |
 
 ---
@@ -182,6 +182,12 @@ is 95 C files, about 62,800 lines.
 - **No exit.** `I_Quit()` reboots through the watchdog. `I_AtExit()` does
   nothing, so Doom's `M_SaveDefaults()` never runs: a change made in Doom's
   menus is lost at the next power-on. `I_Error()` prints and spins.
+- **No configuration file at all.** `m_config.c`'s
+  `LoadDefaultCollection()` and `SaveDefaultCollection()` are compiled out
+  (`#if ORIGCODE`), so `M_SaveDefaults()` would write nothing even if it
+  ran, and `default.cfg` is never read (found in M8). Their `fprintf()`,
+  `fscanf()` and `feof()` would not work on the FatFs glue's `FILE *`
+  anyway, and the quiet build defines `fprintf()` away.
 - **No clock.** The SD driver's `get_fattime()` returns 0, so every file
   written is dated 1980. Doom itself never asks the time of day.
 
@@ -322,6 +328,7 @@ The patch, **expected**, to be confirmed as each milestone reaches it:
 | `src/doomgeneric/doomgeneric/r_plane.c` | The sky's texture centred no higher than the view's centre, so a view taller than 200 rows does not wrap it (§7.7) | M3, done |
 | `src/doomgeneric/doomgeneric/d_main.c` | ~~After Doom loads its configuration, `picocalc.ini`'s run choice is applied~~: not needed; a shim in `I_InitJoystick()` does it (§9.4) | M7, no patch |
 | `src/doomgeneric/doomgeneric/r_data.c` | Perhaps: the colormaps copied into SRAM (§16, M5's levers) | M5 or M9 |
+| `src/doomgeneric/doomgeneric/m_config.c` | `LoadDefaultCollection()` and `SaveDefaultCollection()` compiled back in under `PICOCALC_DOOM_CONFIG_FILES`, which the firmware sets for this file alone, with `picocalc/config_stdio.h` included last so their `fprintf()`, `fscanf()` and `feof()` are the port's, over FatFs (§13.3). Three one-line hunks; the code itself unchanged | M8, done |
 
 Each patched hunk carries a comment citing the section of this document
 that requires it (EL §14.1).
@@ -847,6 +854,16 @@ key map never sends. Doom calls `I_InitJoystick()`, which is the port's,
 after `M_LoadDefaults()`, so the port sets both there and wins over
 `default.cfg`: a shim, not the `d_main.c` hunk first planned (§5.3).
 
+**Four bindings `default.cfg` cannot hold** (found in M8). The file keeps a
+key as its DOS scan code, through `m_config.c`'s `scantokey` table, and
+reads a number past 127 back as 0, unbound. doomgeneric's own codes for
+fire, use and the two strafes (`KEY_FIRE` and the rest, 160–163), which the
+key map sends, are in no scan-code table, so Doom writes them as they are
+and reads them back unbound: after the first quit, Ctrl, Space, `,` and `.`
+would do nothing. Doom's menus cannot change a binding, so `I_InitJoystick()`
+puts any of the four that loaded as 0 back to its code. `test_config_file`
+shows the loss.
+
 **Caps Lock** flips between always running and the setting's other state
 (walking, or running on the held `run_key` when `run = hold`), from the
 first tic; before Doom starts (the WAD list, a page) it does nothing. The
@@ -879,6 +896,16 @@ on `spi0`, the PicoCalc's pins, `CLK_FAST` made overridable and set to
 (§13.2). `pio_spi.c` is not compiled. Upstream's FatFs configuration
 (exFAT and long names on, `FF_FS_REENTRANT` 0) is kept.
 
+**FatFs's working memory** (`FF_USE_LFN` 3) comes from the SRAM heap
+through `ff_memalloc()`: a 1,120-byte name buffer for each call that takes
+a path, and in `f_mkdir()` up to 32 KB to clear the new directory's
+cluster, halved on each NULL down to a sector-by-sector fallback. The SDK's
+`malloc()` panics rather than return NULL, so M8's first new directory (a
+game's save directory) stopped the program with "Out of memory". A
+link-time wrap in `picocalc/doom_files.c` passes the name buffer on and
+returns NULL for any other request that would not leave 1 KB of the heap
+free, so FatFs falls back (HW §7.1).
+
 The card stays on core 0 (§6.1). WAD lumps are read on demand: Doom
 precaches a level's graphics when it loads (`precache`, on by default), so
 reads in play are lumps the zone purged or sounds heard for the first
@@ -894,20 +921,28 @@ the problem. Removal in play is not handled; the next start finds it.
 Upstream's, so a card works with both:
 
 ```
-/doom/*.wad            IWADs and PWADs
-/doom/default.cfg      Doom's settings: volumes, bindings, screen size (Doom writes it)
-/doom/*doom.cfg        Chocolate Doom's extra settings (Doom writes it)
-/doom/.savegame/       saves, doomsav0.dsg … doomsav7.dsg
-/doom/picocalc.ini     the port's settings (§10.3), optional
+/doom/*.wad                   IWADs and PWADs
+/doom/default.cfg             Doom's settings: volumes, screen size, the vanilla keys (Doom writes it)
+/doom/doomgenericdoom.cfg     Chocolate Doom's extra settings (Doom writes it)
+/doom/.savegame/<game>/       saves, doomsav0.dsg … doomsav7.dsg, and temp.dsg while one is written
+/doom/picocalc.ini            the port's settings (§10.3), optional
 ```
 
-**Saves are shared between IWADs** (§3.2): Doom and Doom II both use
-`/doom/.savegame/doomsav0.dsg` and the rest, so a slot saved in one shows
-in the other's list, and loading it there fails or worse. Quest met the same
-shape of fault in its config domains (Quest §10.2). The fix is upstream's
-own: Chocolate Doom keeps a directory per IWAD, `.savegame/<iwad>/`, which
-upstream's embedded branch of `M_GetSaveGameDir()` dropped. M8 puts it back
-if the owner agrees, which moves existing saves out of sight.
+Doom writes both configuration files when it quits (§13.3), and reads them
+when it starts (from M8; upstream did neither, §3.2).
+
+**A save directory for each game** (settled by the owner 2026-11-07, M8).
+Upstream's embedded branch of `M_GetSaveGameDir()` put every game's saves
+in `/doom/.savegame/`, so a slot saved in Doom II showed in Doom's list,
+and loading it there failed or worse. Quest met the same shape of fault in
+its config domains (Quest §10.2). Chocolate Doom's own answer is put back,
+as a link-time wrap of `M_GetSaveGameDir()` in `picocalc/doom_files.c`,
+not a patch: `.savegame/<game>/`, where `<game>` is
+`D_SaveGameIWADName()`'s, chosen by the game's mission, not its file. So
+`doom.wad` and `doom1.wad` share `doom.wad/`, as do Doom II and Freedoom:
+Phase 2 (`doom2.wad/`), as in Chocolate Doom. Saves made before M8, in
+`/doom/.savegame/` itself, are left there and no longer listed; moved by
+hand into the right game's directory, they load.
 
 The WAD list skips macOS's `._` files (HW §7.1).
 
@@ -1230,10 +1265,17 @@ Doom has a way out already: Quit Game in the menu, or F10, then `y`, calls
 `I_Quit()`. Upstream's reboots; the port's leaves:
 
 1. **Runs the at-exit list.** The port's `I_AtExit()` keeps the functions
-   Doom registers, and `I_Quit()` runs them: `M_SaveDefaults()` writes
-   `default.cfg` and Chocolate Doom's config to the card, so a change made
-   in Doom's menus survives (it never did upstream, §3.2). ENDOOM is not
-   shown (§19).
+   Doom registers (six; room for twelve, in a static array, not upstream's
+   `malloc`), and `I_Quit()` runs them, the last registered first, as
+   upstream's list: `S_Shutdown()` silences the sound, then
+   `M_SaveDefaults()` writes `default.cfg` and `doomgenericdoom.cfg` to the
+   card, so a change made in Doom's menus survives (it never did upstream,
+   §3.2; the patch to `m_config.c`, §5.3). Each is taken off the list before
+   it runs, so `G_CheckDemoStatus()`, which quits again at the end of a
+   `-playdemo`, carries on from the next rather than starting over. ENDOOM
+   is not shown (§19): `show_endoom` is cleared first, since `D_Endoom()`
+   would call `exit()`. `I_Error()` runs none of them: it starts again, and
+   a configuration saved from a game that stopped could be why it did.
 2. **Unmounts FatFs**, which flushes it. The reboot does not wait.
 3. **To the shell**, when UF2 Loader started the image
    (`picocalc_shell_loader_present()`) and a card is in
@@ -1243,7 +1285,8 @@ Doom has a way out already: Quit Game in the menu, or F10, then `y`, calls
    `/BOOT2350.UF2`.
 4. **Otherwise, power off** through the southbridge (`OFF` with 6 s,
    HW §6), as Quest does when copied on in BOOTSEL. If the southbridge
-   cannot, the page says so and any key restarts.
+   cannot, the page "Doom has quit." says the settings are saved and that
+   there is nowhere to go, and any key restarts.
 
 Esc in the WAD list (§13.1) takes the same path, from step 2. Holding Up,
 F1 or F5 at power-on also returns to the shell, for any program; that is
@@ -1257,11 +1300,32 @@ program that declares it takes them (`PICOCALC_SHELL_TAKES_ARGS`, in
 `/.shell/args` with its own FatFs at start, removes it, and parses it with
 the header's functions. Every word goes to Doom's `myargv` after
 `picocalc.ini`'s `args`, so the shell's win where Doom takes the last.
-Words that follow `-iwad`, `-file`, `-merge`, `-deh` and `-playdemo` are
-files, made full paths from the user's directory with
-`picocalc_shell_args_path()`, since Doom's own working directory is
-`/doom`. With no file (the loader's menu, a power-on), Doom starts as it
-would with no arguments.
+Words that follow `-iwad`, `-file`, `-merge`, `-deh`, `-record`,
+`-playdemo` and `-timedemo` are files, made full paths from the user's
+directory with `picocalc_shell_args_path()`, since Doom's own working
+directory is `/doom`: one word after `-iwad` and `-record`, and every word
+up to the next option after `-file`, `-merge` and `-deh`, as Doom reads
+them. A file is made a path only when it is there; otherwise it goes as
+typed, for Doom to look for from `/doom`, so `picocalc-doom -iwad
+doom2.wad` works from any directory (found on the board, M8: from `/home`
+it had become `/home/doom2.wad`). A demo is made a path only when that
+path, or it with `.lmp`, is a file; otherwise it is a lump's name
+(`-timedemo demo1`) and goes as typed. `-record`'s file is Doom's to make,
+so it is always a path.
+A word the header cannot make a path (another drive, in DOS) goes as typed
+too, for Doom to report. With no file (the loader's menu, a power-on), Doom
+starts as it would with no arguments.
+
+**The DOS flavour** (M8). There `/` is the switch character and never a
+path, so a word that starts with it is Doom's option with `-`:
+`PICOCALC-DOOM /FILE SIGIL.WAD /WARP 1 1` is `-FILE /HOME/SIGIL.WAD -WARP 1
+1`, and Doom compares options without case. An `-iwad` from the shell skips
+the WAD list as `picocalc.ini`'s does. The file is read and removed in
+`DG_Init()`, after the card mounts, into the PSRAM (4.7 KB, and 6 KB for the
+words made paths), where Doom's `myargv` points for the rest of the run.
+The port takes at most 24 words from the shell, and 48 arguments in all.
+`picocalc_shell.h` is the shell's of 2026-11-05 (its commit `55f338e`),
+which brought the arguments; the copy before M8 predated them.
 
 ---
 
@@ -1342,7 +1406,12 @@ portable parts of `picocalc/`, under `-Wall -Wextra -Werror`, as Quest:
 - The audio shim's staging: 1,421-frame slots in, 512-frame halves out,
   across the wrap, with silence on an empty ring.
 - The shell's time to calendar fields (Quest's).
-- The settings parser, and the argument builder (§13.4).
+- The settings parser, and the shell's words as Doom's arguments
+  (`test_shell_args`, §13.4).
+- Doom's configuration files through the patched `m_config.c`, with the
+  port's stdio for them: saved, loaded, a file written by hand, and the
+  four bindings the file cannot hold (`test_config_file`, in the host
+  engine's directory since it needs the submodule; §9.4, §13.3).
 - `create_patch.sh` then `apply_patch.sh` reproduces `working/`.
 
 **The host engine** (EL §11.2). The patched upstream sources built for the
@@ -1589,6 +1658,9 @@ date and time on the card, and one made after a cold power-on without the
 shell carries the fallback; `picocalc-doom -file <pwad> -warp 1 1` from the
 shell starts that map with that PWAD. **Measured**: save write time;
 time from `y` to the shell's first screen.
+(Met 2026-11-07: the save, the options, the power-off, the return
+to the shell, the shell's date on a save and a PWAD from the shell met on
+the board; save write 59–85 ms; `milestones.md`.)
 
 ### M9: Performance pass and soak
 
@@ -1668,7 +1740,7 @@ milestone named.
 | Sound starves during level loads and card reads | Gaps in music | Expected and counted as underruns; the ring wrap keeps it clean (HW §5.3); shown only at loads in the soak |
 | Mixing (OPL) costs too much on core 0 | Frame rate falls with music | Measured in M6; SRAM placement; mixing on core 1 only if the gate leaves room |
 | Upstream's GPL-2.0 text and Quest's GPL-3.0 code cannot be combined | Cannot distribute | D9: license the port GPL-2.0-or-later, before M0 copies Quest's files |
-| Saves shared between IWADs (§10.2) | One game's save loads in another | Per-IWAD directories in M8, if the owner agrees |
+| Saves shared between IWADs (§10.2) | One game's save loads in another | A directory for each game, from M8 (§10.2) |
 | A reset during a southbridge transaction kills the MCU until a power cycle (HW §6.1) | Dead keyboard, screen looks normal | Every reboot and exit parks core 1 first (§6.2) |
 | Upstream changes files we patch | Patch rejects on a bump | Small patch, shims first (doomgeneric's seam), `check_sources.sh`; bump deliberately |
 

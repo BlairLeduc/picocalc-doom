@@ -25,6 +25,40 @@
  /* get the current time */
  DWORD get_fattime (void)
  {
+--- a/src/doomgeneric/doomgeneric/m_config.c
++++ b/src/doomgeneric/doomgeneric/m_config.c
+@@ -35,6 +35,13 @@
+ 
+ #include "z_zone.h"
+ 
++/* picocalc-doom: Doom's configuration files are read and written on the
++ * card (design.md §13.3): the functions under ORIGCODE below are compiled
++ * back in, with the stdio calls they make sent to FatFs. */
++#ifdef PICOCALC_DOOM_CONFIG_FILES
++#include "config_stdio.h"
++#endif
++
+ //
+ // DEFAULTS
+ //
+@@ -1608,7 +1615,7 @@
+ 
+ static void SaveDefaultCollection(default_collection_t *collection)
+ {
+-#if ORIGCODE
++#if ORIGCODE || defined(PICOCALC_DOOM_CONFIG_FILES)  /* picocalc-doom: §13.3 */
+     default_t *defaults;
+     int i, v;
+     FILE *f;
+@@ -1770,7 +1777,7 @@
+ 
+ static void LoadDefaultCollection(default_collection_t *collection)
+ {
+-#if ORIGCODE
++#if ORIGCODE || defined(PICOCALC_DOOM_CONFIG_FILES)  /* picocalc-doom: §13.3 */
+     FILE *f;
+     default_t *def;
+     char defname[80];
 --- a/src/doomgeneric/doomgeneric/r_plane.c
 +++ b/src/doomgeneric/doomgeneric/r_plane.c
 @@ -397,6 +397,18 @@

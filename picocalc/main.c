@@ -28,9 +28,14 @@
 #include "picocalc_shell.h"
 #include "psram_check.h"
 #include "psram_init.h"
+#include "shell_args.h"
 
 #include <stdint.h>
 #include <stdio.h>
+
+/* The shell gives its arguments to a program that declares it takes them,
+ * in a file sure to be linked (§13.4, D15). */
+PICOCALC_SHELL_TAKES_ARGS(SHELL_ARGS_NAME);
 
 /* dg_picocalc.c: doomgeneric_Create(), then its tick for ever. No Doom
  * header is included here, so the banner's printf survives the quiet

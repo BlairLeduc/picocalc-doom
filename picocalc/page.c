@@ -89,6 +89,13 @@ static const page_text_t s_pages[] = {
         "If it is still on in ten seconds,",
         "switch it off with its power button.",
     } },
+    [PAGE_CANNOT_LEAVE] = { "Doom has quit.", {
+        "Its settings are saved. There is no",
+        "shell to go back to, and the PicoCalc",
+        "cannot switch itself off.",
+        "",
+        "Press any key to start again.",
+    } },
 };
 
 void page_show(page_t p) {
