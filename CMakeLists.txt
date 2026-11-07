@@ -67,9 +67,12 @@ else()
     # (§14.2): stdio into the log ring, which core 1 drains to UART0
     # (picocalc/log.c).
     option(PICOCALC_DOOM_UART "stdio on UART0, GP2/GP3 (development)" ON)
-    # ON draws M1's corner-coded test pattern at boot (picocalc/core1.c);
-    # OFF, the panel stays black. ON until M3 presents frames.
-    option(PICOCALC_DOOM_TEST_PATTERN "draw the test pattern at boot" ON)
+    # ON draws M1's corner-coded test pattern at boot (picocalc/core1.c),
+    # until Doom's first frame; OFF, the panel stays black until then.
+    option(PICOCALC_DOOM_TEST_PATTERN "draw the test pattern at boot" OFF)
+    # Doom arguments fixed at build time (§14.1), before any other, such
+    # as "-iwad doom.wad -timedemo demo1". Each in its own build directory.
+    set(PICOCALC_DOOM_ARGS "" CACHE STRING "Doom arguments built in, for scripted runs")
     # The flash at 300 MHz (§11.1, §11.4): picocalc-quest's qualified
     # divider 4, RX delay 4, 75 MHz. 0 is the bootrom's timing doubled.
     set(PICOCALC_DOOM_FLASH_DIV 4 CACHE STRING "flash QMI divider at 300 MHz, 0 the bootrom's doubled")
@@ -97,11 +100,14 @@ else()
         picocalc/clock.c
         picocalc/core1.c
         picocalc/dg_picocalc.c
+        picocalc/font8x10.c
         picocalc/frame_hash.c
+        picocalc/framepool.c
         picocalc/input_shim.c
         picocalc/lcd.c
         picocalc/log.c
         picocalc/main.c
+        picocalc/page.c
         picocalc/psram_check.c
         picocalc/southbridge.c
         picocalc/video_shim.c
@@ -175,6 +181,7 @@ else()
         # UART0 at 115200 8-N-1 on GP2/GP3, as the shell's (D5).
         PICOCALC_DOOM_UART=$<BOOL:${PICOCALC_DOOM_UART}>
         PICOCALC_DOOM_TEST_PATTERN=$<BOOL:${PICOCALC_DOOM_TEST_PATTERN}>
+        PICOCALC_DOOM_ARGS="${PICOCALC_DOOM_ARGS}"
         PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
         PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
         PICO_DEFAULT_UART=0
@@ -212,6 +219,10 @@ else()
         -Wl,--wrap=ftell
         -Wl,--wrap=remove
         -Wl,--wrap=rename
+        # Timed, not changed: the copy of strategy A (picocalc/video_shim.c)
+        # and each WAD's open and directory (picocalc/dg_picocalc.c).
+        -Wl,--wrap=I_FinishUpdate
+        -Wl,--wrap=W_AddFile
     )
 
     # stdio is the log ring's driver (picocalc/log.c), not the SDK's UART.

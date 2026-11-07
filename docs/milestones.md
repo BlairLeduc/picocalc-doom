@@ -4,6 +4,105 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M3: display and card
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2, id
+`7458DC82A89AAC12`) in a PicoCalc, flashed over SWD with
+`scripts/flash.sh`; development build, Arm GCC 15.2.Rel1, Pico SDK 2.3.1;
+UART0 captured with `scripts/capture.sh`. The card held the 2024
+re-release's `doom.wad`, `doom2.wad`, `plutonia.wad` and `tnt.wad` on
+FAT32, then the owner replaced them with the original 1.9 IWADs, the
+reference data (design.md §10.4), for the last run. Run by Claude; the panel checked by the owner.
+
+| Check | Result |
+|---|---|
+| Doom's title, attract demos and credit screens on the panel, centred, in the right colours, no stale rows in the margins after a demo's level ends (the owner's look) | **passed**, after the sky fix below; Doom II's loop |
+| Card mount | 31–33 ms after an SWD reset (seven boots); **235 ms** after the card went in |
+| `W_AddFile` per IWAD: open and directory read (directory in PSRAM) | `doom.wad` 2,308 lumps 38 ms; `doom2.wad` 2,928 lumps 27–40 ms; `plutonia.wad` 2,991 lumps 42 ms; `tnt.wad` 3,109 lumps 43 ms |
+| Frames published, presented, dropped | 25–29 a second published, every one presented; **13,095 published, 0 dropped** over five boots |
+| Present, a whole 320×240 frame by DMA from the uncached alias | **18.9–19.1 ms** mean, longest 21.1 ms |
+| Core 0's copy (strategy A: `I_FinishUpdate()`'s PSRAM-to-PSRAM `memcpy`) | **9.5–9.7 ms** a frame, longest 11.3 ms |
+| Core 0's publish (palette, margins, cache clean, pool) | 0.44–0.47 ms mean, longest 1.55 ms |
+| Margins rule | buffers blacked 2–4 times a demo cycle, on leaving a level, as the rule says |
+| Core 1's stack, painted | **788 of 2,048 B** (M1: 620; the presenter's DMA and the pages) |
+| Core 0's stack, painted | 2,004 of 3,072 B, the same as M1, on all four IWADs' attract loops |
+| No-card page, then a card pushed in | the page (the owner's look), then a restart through `picocalc_restart()` 0.5 s after insertion; Doom started; southbridge answering, 0 I²C errors |
+| The four IWADs each started with `PICOCALC_DOOM_ARGS="-iwad X"` | passed, a minute of attract loop each |
+| The original 1.9 IWADs, the card's four re-release ones replaced, each started the same way | passed, a minute each: `doom.wad` 2,306 lumps 38 ms, `doom2.wad` 2,919 lumps 40 ms, `plutonia.wad` 2,984 lumps 42 ms, `tnt.wad` 3,101 lumps 43 ms (sizes and lumps those of 1.9, design.md §10.4); present 18.9–19.1 ms, copy 9.5–9.7 ms, none dropped; right on the panel, all four, by the owner's look |
+| Host tests | 6 of 6, with `test_framepool` (the pool, 200,000 random steps; the margins rule against a model of upstream's copy, which a broken rule fails) |
+| Host engine: all 19 demos with the two new hunks | every one ends as in M2: the same tic, map, kills and items |
+| `check_sources.sh` | passed |
+
+Upstream's logging is on in the development build, so the frame rate is
+not a measure (M5's gate is, with `-timedemo`).
+
+**The code**: `framepool.c` (Quest's pool less its row stamps, with a
+margins flag per buffer), `video_shim.c` (`DG_DrawFrame()` publishes,
+`I_FinishUpdate()` link-wrapped only to time its copy), `core1.c`'s
+presenter (Quest's DMA row read) and the one restart that parks core 1,
+`page.c` and `font8x10.c` from Quest with Doom's pages, and
+`dg_picocalc.c`'s card checks, IWAD choice and `I_Error()` page, with
+`W_AddFile()` link-wrapped to time it. The frames live at the base of the
+PSRAM, in upstream's unused 512 KB scratch region. `PICOCALC_DOOM_ARGS`
+builds arguments in (§14.1). The test pattern is now off by default.
+
+**The patch** gains two hunks: `w_wad.c`'s `ExtendLumpInfo()` takes the
+WAD directory from the PSRAM (§12.1), and `r_plane.c` keeps the sky from
+wrapping in the taller view (§7.7). The host engine gives `w_wad.c` a
+`psram_malloc` on the C heap. Demo1's frame-hash list was remade: 281 of
+1,709 tics differ (those with sky in view), tic 206 still the only
+unstable one.
+
+### Sizes
+
+| | M1, development | M3, development | M3, release |
+|---|---:|---:|---:|
+| `.text` | 309,696 | 313,776 | 288,520 |
+| `.rodata` | 138,092 | 141,004 | 132,260 |
+| Image (`.bin`) | 515,008 | 522,088 | 488,064 |
+| `.data` | 66,140 | 66,228 | 66,204 |
+| `.bss` | 304,072 | 310,176 | 306,040 |
+| SRAM left for the heap | 153,800 | **147,608** | 151,768 |
+
+`.bss` grew by 6,104 bytes: the pool's palettes (1,536), two line
+buffers and two index rows (1,920), the page's message and rows (1,600),
+and the pool's and counters' state. The heap no
+longer holds the WAD directory (64–89 KB), which is now in the PSRAM.
+
+### Found
+
+- **The sky drew a strip of the wrong rows along its top.** The owner saw
+  it in the first demo: upstream's 208-row view is centred on row 104,
+  the sky texture on row 100, so the top 4 rows (20 at the largest screen
+  size) read above the 128-row texture and wrapped to its bottom. The host
+  engine draws the same; it is upstream's, from its 240-row frame. Fixed
+  in the patch (design.md §7.7). The frame hashes could not catch it: a
+  list made from the code agrees with the code (emulator-lessons.md §5.9).
+- **The copy costs what §7.3 estimated**: 9.6 ms a frame, a third of core
+  0 at 35 frames a second. Strategy B is M5's first lever, as planned.
+- **The present is the presenter's alone**: 19 ms, the same as with
+  nothing on core 0 (hardware-notes.md §4.7), so core 1 presents up to
+  about 50 frames a second, and Doom's cap is 35.
+- **A CMake option's new default does not reach an existing build
+  directory**: `build/pico` kept the test pattern on from its cache until
+  configured with `-DPICOCALC_DOOM_TEST_PATTERN=OFF`.
+
+### Not checked
+
+- **Doom's menu over the title** (part of M3's done-when): no keyboard
+  until M4, which checks it.
+- The pages for a card that does not mount, a card without `/doom`, and a
+  card without an IWAD; and the PSRAM's page. Only the no-card page was
+  shown.
+- `doom1.wad` and Freedoom.
+- The release build on a device; the Plus 2.
+- `I_Error()`'s page (shown by M4's error and `-timedemo` runs, M5).
+- `picocalc.ini`'s `iwad` (M7, with the settings parser): M3 starts the
+  build's `-iwad`, else the first of Doom's order, which is the only one
+  on a card with one.
+- The device's frame-hash list (M5).
+- Card reads in play (M5's heartbeat).
+
 ## M2: host engine
 
 **2026-11-06**, on the host only (macOS, Apple silicon, Apple clang 21),

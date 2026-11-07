@@ -755,6 +755,21 @@ every machine size. The menu is then in the guest's own case and style.
 A font kept only for a test is dead weight: the Ace's 8×8 font went from
 the tree before release.
 
+### 5.9 A taller frame shows what the original never drew
+
+An upstream that changes the original's screen geometry can draw rows the
+original never reached, and draw them wrong. FRANK DOOM gives Doom a
+240-row frame and a 208-row 3D view where vanilla had 200 and 168; Doom
+positions its sky texture for a view centred on row 100, so in the taller
+view the top rows read above the 128-row texture and wrap to its bottom,
+a strip of the wrong sky along the top edge. Nothing failed: the demos
+played in sync, and the frame-hash list reproduced exactly run after run,
+because a reference made from the same code agrees with that code. The
+owner saw it on the panel in the first minute (2026-11-07). Whatever the
+port or its upstream changes about the screen, look at the result on the
+panel before trusting a hash, and check each drawer that positions
+content against the old height (skies, status bars, centred pictures).
+
 ---
 
 ## 6. Audio

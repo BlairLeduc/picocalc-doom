@@ -2,12 +2,11 @@
  * picocalc-doom — entry point (design.md §5.3, §13.1), in place of
  * upstream's src/main.c, which is not compiled.
  *
- * M1, the board's bring-up, in the boot order of §13.1: the clocks
- * (§11.1); the log and stdio (§14.2); the banner; PSRAM init; core 1,
- * which brings up the southbridge and the LCD and draws the test pattern;
- * the PSRAM's round trip (§11.3); then Doom. Until M3 the frames go
- * nowhere, so Doom runs its demos unseen, which is enough to paint core
- * 0's stack with the renderer's recursion (§12.1). From
+ * The boot order of §13.1: the clocks (§11.1); the log and stdio
+ * (§14.2); the banner; PSRAM init; core 1, which brings up the
+ * southbridge and the LCD (and draws the test pattern in a build that
+ * asks for it); the PSRAM's round trip (§11.3), with a page if it fails;
+ * then Doom, whose DG_Init() checks the card (dg_picocalc.c). From
  * picocalc-quest's main.c (D8).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -24,6 +23,7 @@
 #include "clock.h"
 #include "core1.h"
 #include "log.h"
+#include "page.h"
 #include "picocalc_doom_version.h"
 #include "picocalc_shell.h"
 #include "psram_check.h"
@@ -173,7 +173,8 @@ int main(void) {
     if (!psram_ok) {
         /* Upstream keeps the zone, the screen and the music there:
          * starting Doom on a bad one would fail somewhere far from the
-         * cause. Core 1 keeps the heartbeat going; M3 shows a page. */
+         * cause. Core 1 shows the page and keeps the heartbeat going. */
+        page_show(PAGE_NO_PSRAM);
         for (;;) tight_loop_contents();
     }
 

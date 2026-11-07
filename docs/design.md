@@ -24,9 +24,10 @@ Estimates are labelled as estimates; everything else is read from source,
 from the companions' measurements, or from the upstream build measured on
 2026-11-06 (§3.4).
 
-**Status, 2026-11-06.** M1 done: the board brought up at 300 MHz on a
-Plus 2 W and a Plus 2, PSRAM verified, the test pattern right, and Doom II
-running its demos unseen (`milestones.md`). Upstream is
+**Status, 2026-11-07.** M3 done: Doom's title, demos and credits on the
+panel through the frame pool and core 1's presenter, the card checked with
+a page for each failure, the WAD directory in PSRAM, and the sky's top rows
+fixed (§7.7) (`milestones.md`). Upstream is
 pinned at commit `153a950ba53f2dc7f1101702b57c1078d99575aa` (2026-05-12,
 version 1.11).
 
@@ -315,7 +316,9 @@ The patch, **expected**, to be confirmed as each milestone reaches it:
 |---|---|---|
 | `drivers/sdcard/sdcard.c` | `CLK_FAST` overridable, set to 25 MHz; its `get_fattime()` compiled out for the PicoCalc clock's (§10.1, §13.2). The same hunks as Quest's, on the same file | M0 |
 | `src/doomgeneric/doomgeneric/i_video.c` | `I_VideoBuffer` from the port's SRAM buffer rather than the zone, behind a build switch (§7.3). Later, perhaps, `I_FinishUpdate()`'s copy handed to the port's DMA (§7.3) | M5, M9 |
-| `src/doomgeneric/doomgeneric/w_wad.c` | `ExtendLumpInfo()` allocates the WAD directory from PSRAM, not the SRAM heap (§12.1) | M3 |
+| `src/doomgeneric/doomgeneric/w_wad.c` | `ExtendLumpInfo()` allocates the WAD directory from PSRAM, not the SRAM heap (§12.1) | M3, done |
+| `src/doomgeneric/doomgeneric/v_video.c` | `V_DrawPatch` centres and crops a patch wider than the screen (§7.6) | M2, done |
+| `src/doomgeneric/doomgeneric/r_plane.c` | The sky's texture centred no higher than the view's centre, so a view taller than 200 rows does not wrap it (§7.7) | M3, done |
 | `src/doomgeneric/doomgeneric/d_main.c` | After Doom loads its configuration, `picocalc.ini`'s run choice is applied: always on by default (§9.4) | M7 |
 | `src/doomgeneric/doomgeneric/r_data.c` | Perhaps: the colormaps copied into SRAM (§16, M5's levers) | M5 or M9 |
 
@@ -463,9 +466,11 @@ under one SIO spinlock, and a dropped-frame counter.
 - **Margins.** Outside a level upstream writes only rows 20–219 and blacks
   the margins once, on leaving a level, in whichever buffer was current. With
   three buffers the other two would keep a level's rows there. The shim
-  keeps a "margins black" flag per buffer and blacks a claimed buffer's
-  margins when Doom is not in a level and the flag is clear: 12,800 bytes,
-  only on the first frames after leaving a level.
+  keeps a "margins black" flag per buffer and, at publish, blacks the
+  buffer's margins when Doom is not in a level and the flag is clear:
+  12,800 bytes, only on the first frames after leaving a level. (At
+  publish rather than at claim: `gamestate` is then the one upstream's copy
+  went by.)
 - **The buffers live in PSRAM**, in upstream's 512 KB scratch region below
   the bump allocator, which nothing in upstream's tree uses: no file calls
   its getters. Three of 76,800 bytes take 225 KB of it.
@@ -549,6 +554,24 @@ episode 3.
 The original 1.9 IWADs' pictures are all 320 wide (§10.4), so none of this
 touches them; the re-release's No Rest for the Living and Master Levels
 have 426-wide title pictures, centred the same way.
+
+### 7.7 The sky in a taller view
+
+Doom draws the sky with the texture's row 100 at the view's centre row
+(`skytexturemid`), right for vanilla's 200-row screen, whose largest view
+is centred on row 100. Upstream's 240-row frame gives a 208-row view
+(centre 104) at the default size and 240 rows (centre 120) at the
+largest, so the view's top 4 or 20 rows read above the 128-row sky
+texture, and the column drawer's `& 127` wraps them to the texture's
+bottom rows: a strip of horizon colours along the top of the sky. The
+owner saw it on the panel in M3; the host engine draws it too, so it is
+upstream's, not the port's.
+
+The patch draws the sky with the texture's centre no higher than the
+view's centre (`max(skytexturemid, centery × iscale)`), so the view's row
+0 is the texture's row 0. A view of 200 rows or fewer draws as before.
+Only pixels change: every demo ends as before (M3), and demo1's
+frame-hash list was remade, 281 of its 1,709 tics differing.
 
 ---
 
@@ -1483,15 +1506,15 @@ milestone named.
 | PSRAM at 100 MHz (divider 3) at 300 MHz | works | the round trip on a Plus 2 W and a Plus 2 (HW §2.4) | confirmed | Confirmed 2026-11-06, M1 |
 | LCD SPI at 75 MHz | works | 75,000,000 Hz returned; the test pattern right | confirmed | Confirmed 2026-11-06, M1 |
 | Flash at 75 MHz (divider 4, RX delay 4) | works | HW §3's sweep, Quest M8; M1 ran on both boards, for minutes | confirmed | Confirmed 2026-11-06, M1; the soak in M9 |
-| SD at 25 MHz with upstream's driver | works | the same `sdcard.c` as Quest's, confirmed there | high | M3 |
-| Full 320×240 present from PSRAM | ~18.1 ms | HW §4.7 | high | M3 |
+| SD at 25 MHz with upstream's driver | works | mounted in 31 ms, four IWADs read through Doom's attract loop for minutes, M3 | confirmed | Confirmed 2026-11-07, M3 |
+| Full 320×240 present from PSRAM | 19.1 ms by DMA from the uncached alias, longest 21.1 ms | M3, the presenter under Doom II's attract loop (HW §4.7) | confirmed | Confirmed 2026-11-07, M3 |
 | PWM at 49,718 Hz: TOP 3016, oversample 2, 99.4 kHz carrier | right pitch, no audible carrier | arithmetic (§8.1); HW §5.2 on carriers | medium | M6 |
 | EMU8950 plus 16 effect channels per tic at 300 MHz | affordable | not measured; `rp2040-doom` ran it on an M0+ | low | M6 |
 | Alt+arrow delivered as the arrow with Alt held | yes | HW §6.3, from the MCU's source | medium | M4 |
 | Three keys at once (arrow, Ctrl, Space) delivered | yes | not tried | low | M4 |
 | Shift+Left/Right swallowed, release included | yes | HW §6.3, from the MCU's source | high | M4, by the trap's test on the keyboard |
 | Lumps per IWAD (§12.1) | 2,306 / 2,919 / 2,984 / 3,101 (The Ultimate Doom, Doom II, Plutonia, TNT, 1.9); the re-release's 2–9 more; shareware ~1,264 | the owner's WADs, read 2026-11-06 and -07 (§10.4) | confirmed, but the shareware count | Confirmed 2026-11-07 |
-| This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes, once its 560- and 576-wide pictures are centred (§7.6) | the host engine: every demo and every map of the four IWADs and both PWADs, 2026-11-06; the 1.9 IWADs the same, 2026-11-07 | confirmed on the host | Confirmed 2026-11-06, M2; the device in M3 |
+| This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes, once its 560- and 576-wide pictures are centred (§7.6) | the host engine: every demo and every map of the four IWADs and both PWADs, 2026-11-06; the 1.9 IWADs the same, 2026-11-07 | confirmed on the host | Confirmed 2026-11-06, M2; on the device, Doom II's title, demos and credits on the panel, 2026-11-07, M3 |
 | A 3 MB zone holds every map of the commercial IWADs | yes: 0.8 MB left at worst (No Rest for the Living MAP04), 1.4 MB on the IWADs, 1.9 or re-release | the host engine, every map (§12.2) | confirmed on the host | Confirmed 2026-11-07, M2; card reads in play on the device, M5 |
 | SRAM left after the port, with `I_VideoBuffer` in SRAM and the directory in PSRAM | ~40 KB | §12.1's estimate on §3.4's build | medium | M0, M5 |
 | Core 0's default stack is enough for Doom | yes: 2,004 of 3,072 B under Doom II's demos | M1, painted | medium: 1 KB to spare | M3–M5, on the big maps |

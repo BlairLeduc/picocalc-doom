@@ -45,6 +45,7 @@ target_include_directories(doom_host PRIVATE
     ${PROJECT_SOURCE_DIR}/picocalc
     ${engine_dir}
     ${PICOCALC_DOOM_UPSTREAM}/src
+    ${PICOCALC_DOOM_UPSTREAM}/drivers    # psram_allocator.h, for w_wad.c
 )
 
 target_compile_definitions(doom_host PRIVATE
