@@ -1,0 +1,19 @@
+.DS_Store
+
+# The owner's WADs, for the host engine. Copyrighted: never committed
+# (design.md §5.1, §10.4).
+/reference/
+*.wad
+*.WAD
+
+# Build trees and UART captures.
+build/
+out/
+
+# Upstream copied and patched by the build, and upstream files being
+# edited for the patch (design.md §5.1).
+/frank-doom/
+/working/
+
+# Release images (scripts/build_release.sh).
+dist/
