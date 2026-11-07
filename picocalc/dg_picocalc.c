@@ -3,10 +3,10 @@
  * (design.md §5.3), in place of upstream's src/doomgeneric_rp2350.c, which
  * is not compiled.
  *
- * M0: upstream's behaviour less HDMI, PS/2 and USB, so the engine links.
- * The PSRAM verify (§11.3), the failure pages (§13.1), the WAD list (D13),
- * the at-exit list and the exit to the shell (§13.3) replace the marked
- * parts in later milestones.
+ * Upstream's behaviour less HDMI, PS/2 and USB. main() has started and
+ * checked the PSRAM by the time DG_Init() runs (§11.3, M1). The failure
+ * pages (§13.1), the WAD list (D13), the at-exit list and the exit to the
+ * shell (§13.3) replace the marked parts in later milestones.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -19,11 +19,10 @@
 
 #include "pico/stdlib.h"
 
-#include "board_config.h"
+#include "core1.h"
 #include "ff.h"
 #include "frank_doom_log.h"
 #include "psram_allocator.h"
-#include "psram_init.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -35,22 +34,46 @@ extern void stdio_fatfs_init(void);
  * does not use, kept so a link against either sees one definition. */
 FATFS fs;
 
+/* A failure before Doom starts: logged, and core 0 stops here while core
+ * 1 keeps the heartbeat. Not panic(): with the probe attached its
+ * breakpoint halts core 0, and the timer with it (hardware-notes.md
+ * §2.7). M3 names it on a page (§13.1). */
+static void stop(const char *why)
+{
+    g_core0_stack = core0_stack_used();
+    FRANK_DOOM_LOG("picocalc-doom: %s; stopped\n", why);
+    (void)why;  /* unused when FRANK_DOOM_QUIET compiles the log out */
+    for (;;) {
+        tight_loop_contents();
+    }
+}
+
+/* main()'s last call. Here, not in main.c: a file that includes Doom's
+ * headers has printf compiled out in the quiet build (doomtype.h includes
+ * upstream's frank_doom_quiet_stdio.h), and main.c's banner is printf. */
+void picocalc_doom_run(void)
+{
+    static char *argv[] = { "doom", NULL };
+    doomgeneric_Create(1, argv);
+    for (;;) {
+        doomgeneric_Tick();
+    }
+}
+
 void DG_Init(void)
 {
-    /* Upstream's PSRAM start-up. M1 adds the round trip (§11.3). */
-    psram_init(get_psram_pin());
+    /* The PSRAM was started and checked by main() (§11.3). */
     psram_set_sram_mode(0);
 
     /* M3 replaces this with the frame pool (§7.2). */
     DG_ScreenBuffer = psram_malloc(DOOMGENERIC_RESX * DOOMGENERIC_RESY * sizeof(pixel_t));
     if (!DG_ScreenBuffer) {
-        panic("DG_Init: no PSRAM for the screen buffer");
+        stop("no PSRAM for the screen buffer");
     }
     memset(DG_ScreenBuffer, 0, DOOMGENERIC_RESX * DOOMGENERIC_RESY * sizeof(pixel_t));
 
-    /* M3 names a failure on a page (§13.1). */
     if (f_mount(&fs, "", 1) != FR_OK) {
-        panic("DG_Init: the card did not mount");
+        stop("the card did not mount");
     }
     f_chdir("/doom");
     stdio_fatfs_init();
@@ -59,9 +82,13 @@ void DG_Init(void)
 /* DG_StartScreen() is left to doomgeneric's weak default (no list) until
  * M3 starts the only IWAD and M4 draws the WAD list (§13.1). */
 
+/* Core 0's idle time, for the heartbeat's busy share (§14.3). */
 void DG_SleepMs(uint32_t ms)
 {
+    uint32_t t0 = time_us_32();
     sleep_ms(ms);
+    g_core0_sleep_us += time_us_32() - t0;
+    g_core0_stack = core0_stack_used();
 }
 
 uint32_t DG_GetTicksMs(void)
@@ -74,21 +101,12 @@ void DG_SetWindowTitle(const char *title)
     (void)title;
 }
 
-/* get_fattime() for FatFs, which the patched sdcard.c leaves to the port
- * (SDCARD_EXTERNAL_FATTIME). M8 takes it from the shell's clock (§13.2);
- * until then FatFs's own fallback date, 1 January 2022. */
-DWORD get_fattime(void)
-{
-    return ((DWORD)(FF_NORTC_YEAR - 1980) << 25) |
-           ((DWORD)FF_NORTC_MON << 21) |
-           ((DWORD)FF_NORTC_MDAY << 16);
-}
-
 /* Doom's system calls. */
 
 void I_Error(char *error, ...)
 {
     /* M4 shows it on a page and restarts on a key (§13.1). */
+    g_core0_stack = core0_stack_used();
     va_list ap;
     va_start(ap, error);
     vprintf(error, ap);

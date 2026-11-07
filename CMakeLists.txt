@@ -53,9 +53,16 @@ else()
 
     # PICOCALC_DOOM_UART=OFF is the build that ships: no stdio, GP2/GP3
     # free, upstream quiet. ON, the default, is the development build
-    # (§14.2). M0 uses the SDK's UART stdio; M1 replaces it with the log
-    # ring.
+    # (§14.2): stdio into the log ring, which core 1 drains to UART0
+    # (picocalc/log.c).
     option(PICOCALC_DOOM_UART "stdio on UART0, GP2/GP3 (development)" ON)
+    # ON draws M1's corner-coded test pattern at boot (picocalc/core1.c);
+    # OFF, the panel stays black. ON until M3 presents frames.
+    option(PICOCALC_DOOM_TEST_PATTERN "draw the test pattern at boot" ON)
+    # The flash at 300 MHz (§11.1, §11.4): picocalc-quest's qualified
+    # divider 4, RX delay 4, 75 MHz. 0 is the bootrom's timing doubled.
+    set(PICOCALC_DOOM_FLASH_DIV 4 CACHE STRING "flash QMI divider at 300 MHz, 0 the bootrom's doubled")
+    set(PICOCALC_DOOM_FLASH_RXDELAY 4 CACHE STRING "flash QMI RX delay with FLASH_DIV")
 
     # Upstream's version, for its own logs: version.txt is "MAJOR MINOR",
     # joined with a dot, as upstream does.
@@ -74,9 +81,16 @@ else()
     # built as it comes.
     set(PICOCALC_DOOM_SOURCES
         picocalc/audio_shim.c
+        picocalc/board.c
+        picocalc/clock.c
+        picocalc/core1.c
         picocalc/dg_picocalc.c
         picocalc/input_shim.c
+        picocalc/lcd.c
+        picocalc/log.c
         picocalc/main.c
+        picocalc/psram_check.c
+        picocalc/southbridge.c
         picocalc/video_shim.c
     )
     set_source_files_properties(${PICOCALC_DOOM_SOURCES} PROPERTIES
@@ -157,6 +171,9 @@ else()
         PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK=1
         # UART0 at 115200 8-N-1 on GP2/GP3, as the shell's (D5).
         PICOCALC_DOOM_UART=$<BOOL:${PICOCALC_DOOM_UART}>
+        PICOCALC_DOOM_TEST_PATTERN=$<BOOL:${PICOCALC_DOOM_TEST_PATTERN}>
+        PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
+        PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
         PICO_DEFAULT_UART=0
         PICO_DEFAULT_UART_TX_PIN=2
         PICO_DEFAULT_UART_RX_PIN=3
@@ -165,13 +182,19 @@ else()
     target_link_libraries(picocalc-doom
         pico_stdlib
         pico_multicore
+        pico_unique_id
+        hardware_adc
         hardware_clocks
         hardware_dma
+        hardware_flash
+        hardware_i2c
         hardware_irq
         hardware_interp
         hardware_pio
+        hardware_powman     # the shell's clock (§13.2)
         hardware_pwm
         hardware_spi
+        hardware_xip_cache  # the PSRAM's round trip (§11.3)
     )
 
     # As upstream: Doom's stdio file calls go to FatFs
@@ -188,7 +211,8 @@ else()
         -Wl,--wrap=rename
     )
 
-    pico_enable_stdio_uart(picocalc-doom $<BOOL:${PICOCALC_DOOM_UART}>)
+    # stdio is the log ring's driver (picocalc/log.c), not the SDK's UART.
+    pico_enable_stdio_uart(picocalc-doom 0)
     pico_enable_stdio_usb(picocalc-doom 0)
 
     pico_add_extra_outputs(picocalc-doom)

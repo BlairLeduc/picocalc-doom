@@ -24,8 +24,9 @@ Estimates are labelled as estimates; everything else is read from source,
 from the companions' measurements, or from the upstream build measured on
 2026-11-06 (§3.4).
 
-**Status, 2026-11-06.** M0 done: the skeleton, the patch pipeline and CI;
-the engine links, not yet run on a board (`milestones.md`). Upstream is
+**Status, 2026-11-06.** M1 done: the board brought up at 300 MHz on a
+Plus 2 W and a Plus 2, PSRAM verified, the test pattern right, and Doom II
+running its demos unseen (`milestones.md`). Upstream is
 pinned at commit `153a950ba53f2dc7f1101702b57c1078d99575aa` (2026-05-12,
 version 1.11).
 
@@ -906,9 +907,12 @@ the directory to PSRAM (§5.3) in M3, before anything competes for the
 heap. The directory is read on every lump lookup, in small pieces, which
 the XIP cache serves well.
 
-**Core 0's stack** is the SDK's default; Doom's BSP walk recurses. The
-heartbeat reports the painted high-water of both stacks from M1, and the
-port moves to a larger stack only if it comes near.
+**Core 0's stack** is the SDK's default; Doom's BSP walk recurses. It is
+SCRATCH_Y's 4 KB less EMU8950's 1 KB `logsin_table`, which upstream puts
+in `.scratch_y`: **3,072 B**, with core 1's stack directly below (HW §2.3).
+M1 measured 2,004 B under Doom II's demos. The heartbeat reports the
+painted high-water of both stacks, and the port moves to a larger stack
+only if it comes near.
 
 **Core 1's stack** is 2 KB (HW §9.5); Quest's presenter, poll, log pump
 and pages reached 724 bytes.
@@ -1386,9 +1390,9 @@ milestone named.
 | Constant | Value | Source | Confidence | Settled in |
 |---|---|---|---|---|
 | Stable at 300 MHz, 1.20 V, under Doom | yes | HW §3; Quest's soak (other workload) | medium | M5, M9 soak |
-| PSRAM at 100 MHz (divider 3) at 300 MHz | works | Quest's M1 round trip on a Plus 2 W (HW §2.4) | high | M1 |
-| LCD SPI at 75 MHz | works | HW §4.4, Quest M1 | high | M1 |
-| Flash at 75 MHz (divider 4, RX delay 4) | works | HW §3's sweep, Quest M8 | high | M1 |
+| PSRAM at 100 MHz (divider 3) at 300 MHz | works | the round trip on a Plus 2 W and a Plus 2 (HW §2.4) | confirmed | Confirmed 2026-11-06, M1 |
+| LCD SPI at 75 MHz | works | 75,000,000 Hz returned; the test pattern right | confirmed | Confirmed 2026-11-06, M1 |
+| Flash at 75 MHz (divider 4, RX delay 4) | works | HW §3's sweep, Quest M8; M1 ran on both boards, for minutes | confirmed | Confirmed 2026-11-06, M1; the soak in M9 |
 | SD at 25 MHz with upstream's driver | works | the same `sdcard.c` as Quest's, confirmed there | high | M3 |
 | Full 320×240 present from PSRAM | ~18.1 ms | HW §4.7 | high | M3 |
 | PWM at 49,718 Hz: TOP 3016, oversample 2, 99.4 kHz carrier | right pitch, no audible carrier | arithmetic (§8.1); HW §5.2 on carriers | medium | M6 |
@@ -1400,9 +1404,9 @@ milestone named.
 | This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes | not run; vanilla engines are said to | medium | M2 |
 | A 3 MB zone holds every map of the commercial IWADs | yes | upstream ships it; not measured | medium | M2, M5 |
 | SRAM left after the port, with `I_VideoBuffer` in SRAM and the directory in PSRAM | ~40 KB | §12.1's estimate on §3.4's build | medium | M0, M5 |
-| Core 0's default stack is enough for Doom | yes | upstream runs on it | medium | M1, painted |
+| Core 0's default stack is enough for Doom | yes: 2,004 of 3,072 B under Doom II's demos | M1, painted | medium: 1 KB to spare | M3–M5, on the big maps |
 | Upstream's renderer changes do not desync vanilla demos | yes | not checked | medium | M2 |
-| POWMAN timer unaffected by the move to 300 MHz | yes | HW §1.2, Quest M1 | high | M1 |
+| POWMAN timer unaffected by the move to 300 MHz | yes: 2 ms across 1.5–2.0 ms | M1, both boards (HW §1.2) | confirmed | Confirmed 2026-11-06, M1 |
 | The image fits UF2 Loader's partition | yes; 563 KB upstream | §3.4; HW §2.7 | high | M10 |
 
 ---
