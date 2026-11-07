@@ -73,6 +73,29 @@ else()
     # Doom arguments fixed at build time (§14.1), before any other, such
     # as "-iwad doom.wad -timedemo demo1". Each in its own build directory.
     set(PICOCALC_DOOM_ARGS "" CACHE STRING "Doom arguments built in, for scripted runs")
+    # ON logs each tic's frame hash ("fh TIC CRC", §15, M5) for
+    # scripts/host_engine.sh compare. Costs core 0 a pass over each frame.
+    option(PICOCALC_DOOM_FRAME_HASHES "log a frame hash a tic (development)" OFF)
+    # With the hashes, the frame drawn at this tic is logged too, as hex
+    # rows ("fd ROW HEX"), to set beside the host engine's; -1, none.
+    set(PICOCALC_DOOM_FRAME_DUMP_TIC -1 CACHE STRING "tic whose frame a hash build logs, -1 none")
+    if (PICOCALC_DOOM_FRAME_HASHES AND NOT PICOCALC_DOOM_UART)
+        message(FATAL_ERROR "PICOCALC_DOOM_FRAME_HASHES logs to the UART: it needs PICOCALC_DOOM_UART")
+    endif()
+    # Where Doom draws (§7.3): A, upstream's I_VideoBuffer in the zone, in
+    # the PSRAM; B, a 76,800-byte buffer in SRAM, the gate's first lever,
+    # which M5 kept (44 frames a second against A's 28). A stays as the
+    # control.
+    set(PICOCALC_DOOM_VIDEO_BUF B CACHE STRING "where Doom draws: A (zone, PSRAM) or B (SRAM)")
+    set_property(CACHE PICOCALC_DOOM_VIDEO_BUF PROPERTY STRINGS A B)
+    if (NOT PICOCALC_DOOM_VIDEO_BUF MATCHES "^[AB]$")
+        message(FATAL_ERROR "PICOCALC_DOOM_VIDEO_BUF is A or B, not ${PICOCALC_DOOM_VIDEO_BUF}")
+    endif()
+    # The gate's second lever (§16 M5): COLORMAP, 8,704 bytes, in SRAM.
+    # M5 kept it: The Ultimate Doom's demo 4 needed it to reach 35 fps.
+    option(PICOCALC_DOOM_COLORMAPS_SRAM "the light tables in SRAM" ON)
+    # The third: the column and span drawers in SRAM (cmake/sram_sections.cmake).
+    option(PICOCALC_DOOM_DRAWERS_SRAM "Doom's column and span drawers in SRAM" OFF)
     # The flash at 300 MHz (§11.1, §11.4): picocalc-quest's qualified
     # divider 4, RX delay 4, 75 MHz. 0 is the bootrom's timing doubled.
     set(PICOCALC_DOOM_FLASH_DIV 4 CACHE STRING "flash QMI divider at 300 MHz, 0 the bootrom's doubled")
@@ -112,17 +135,53 @@ else()
         picocalc/main.c
         picocalc/page.c
         picocalc/psram_check.c
+        picocalc/render_sram.c
         picocalc/southbridge.c
         picocalc/video_shim.c
     )
     set_source_files_properties(${PICOCALC_DOOM_SOURCES} PROPERTIES
         COMPILE_OPTIONS "${PICOCALC_DOOM_WARNINGS}")
 
+    # Upstream's s_sound.c traces every sound and song in a dozen printf
+    # lines, and wi_stuff.c every frame of the intermission: more than
+    # UART0 carries. The log ring dropped 38,414 lines in M5's first play
+    # session, then 12,750 in one second at E1M1's intermission. Their
+    # printf is quiet even in the development build, as upstream's
+    # FRANK_DOOM_QUIET makes it in the release (frank_doom_quiet_stdio.h);
+    # the options come after the target's definitions, so -U then -D
+    # override them for these files.
+    set_source_files_properties(
+        ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/s_sound.c
+        ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/wi_stuff.c
+        PROPERTIES COMPILE_OPTIONS "-UFRANK_DOOM_QUIET;-DFRANK_DOOM_QUIET=1")
+
     add_executable(picocalc-doom
         ${PICOCALC_DOOM_SOURCES}
         ${PICOCALC_DOOM_UPSTREAM_SOURCES}
     )
     add_dependencies(picocalc-doom picocalc_doom_version)
+
+    # The third lever (§16 M5): upstream's drawers moved to SRAM after they
+    # are compiled, by renaming their sections, with no patch (§5.3).
+    if (PICOCALC_DOOM_DRAWERS_SRAM)
+        set(sram_funcs
+            R_DrawColumn R_DrawColumnLow
+            R_DrawFuzzColumn R_DrawFuzzColumnLow
+            R_DrawTranslatedColumn R_DrawTranslatedColumnLow
+            R_DrawSpan R_DrawSpanLow
+            R_DrawMaskedColumn)
+        # Commas, not semicolons, through make and the shell.
+        string(REPLACE ";" "," sram_funcs_arg "${sram_funcs}")
+        add_custom_command(TARGET picocalc-doom PRE_LINK
+            COMMAND ${CMAKE_COMMAND}
+                -DOBJDIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/picocalc-doom.dir
+                -DOBJCOPY=${CMAKE_OBJCOPY}
+                -DFILES=r_draw.c,r_things.c
+                -DFUNCS=${sram_funcs_arg}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sram_sections.cmake
+            COMMENT "picocalc-doom: Doom's drawers to SRAM"
+            VERBATIM)
+    endif()
 
     # Upstream's include paths; src/pico has audio.h, the API
     # picocalc/audio_shim.c implements.
@@ -185,6 +244,10 @@ else()
         PICOCALC_DOOM_UART=$<BOOL:${PICOCALC_DOOM_UART}>
         PICOCALC_DOOM_TEST_PATTERN=$<BOOL:${PICOCALC_DOOM_TEST_PATTERN}>
         PICOCALC_DOOM_ARGS="${PICOCALC_DOOM_ARGS}"
+        PICOCALC_DOOM_FRAME_HASHES=$<BOOL:${PICOCALC_DOOM_FRAME_HASHES}>
+        PICOCALC_DOOM_FRAME_DUMP_TIC=${PICOCALC_DOOM_FRAME_DUMP_TIC}
+        PICOCALC_DOOM_VIDEO_BUF_B=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>
+        PICOCALC_DOOM_COLORMAPS_SRAM=$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>
         PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
         PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
         PICO_DEFAULT_UART=0
@@ -226,6 +289,8 @@ else()
         # and each WAD's open and directory (picocalc/dg_picocalc.c).
         -Wl,--wrap=I_FinishUpdate
         -Wl,--wrap=W_AddFile
+        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>:-Wl,--wrap=I_InitGraphics>
+        $<$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>:-Wl,--wrap=R_Init>
     )
 
     # stdio is the log ring's driver (picocalc/log.c), not the SDK's UART.

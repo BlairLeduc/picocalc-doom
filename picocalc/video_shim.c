@@ -13,6 +13,18 @@
  * I_FinishUpdate() is wrapped at link time (--wrap) only to time its
  * copy, which is strategy A's cost (§7.3): the call less DG_DrawFrame.
  *
+ * PICOCALC_DOOM_VIDEO_BUF chooses §7.3's strategy. A: Doom draws into
+ * upstream's I_VideoBuffer in the zone, in the PSRAM. B: I_InitGraphics()
+ * is wrapped, and I_VideoBuffer pointed at a buffer in SRAM after it, each
+ * time it runs; the zone block upstream allocated is left as it is, so the
+ * zone's layout stays the host engine's and the frame hashes compare.
+ *
+ * With PICOCALC_DOOM_FRAME_HASHES (M5, §15) each tic's last frame is
+ * hashed as the host engine hashes it, after the margins step, and logged
+ * as "fh TIC CRC"; scripts/host_engine.sh compare reads them from the
+ * capture. It costs core 0 a pass over the frame, so a hash build is never
+ * the one timed.
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -21,16 +33,20 @@
 #include "doomtype.h"
 #include "doomstat.h"
 #include "i_video.h"
+#include "d_loop.h"
 
 #include "hardware/sync.h"
 #include "hardware/xip_cache.h"
 #include "pico/stdlib.h"
 
 #include "core1.h"
+#include "frame_hash.h"
 #include "framepool.h"
 #include "input.h"
+#include "log.h"
 #include "video.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #define PSRAM_CACHED   0x11000000u
@@ -58,6 +74,85 @@ static int s_filling = -1;
 static volatile bool s_ready;
 /* DG_DrawFrame's own time in the I_FinishUpdate() now running. */
 static uint32_t s_draw_us;
+
+#ifndef PICOCALC_DOOM_VIDEO_BUF_B
+#define PICOCALC_DOOM_VIDEO_BUF_B 0
+#endif
+
+#if PICOCALC_DOOM_VIDEO_BUF_B
+/* Strategy B (§7.3): the frame Doom draws, in SRAM. Word-aligned for
+ * upstream's memcpy. */
+static uint8_t s_video_sram[SCREENWIDTH * SCREENHEIGHT] __attribute__((aligned(4)));
+
+void __real_I_InitGraphics(void);
+
+void __wrap_I_InitGraphics(void) {
+    __real_I_InitGraphics();
+    memset(s_video_sram, 0, sizeof s_video_sram);
+    I_VideoBuffer = s_video_sram;
+}
+#endif
+
+#ifndef PICOCALC_DOOM_FRAME_HASHES
+#define PICOCALC_DOOM_FRAME_HASHES 0
+#endif
+
+#if PICOCALC_DOOM_FRAME_HASHES
+static frame_hash_tic_t s_hash_held;
+
+#ifndef PICOCALC_DOOM_FRAME_DUMP_TIC
+#define PICOCALC_DOOM_FRAME_DUMP_TIC -1
+#endif
+
+/* The first frame drawn at PICOCALC_DOOM_FRAME_DUMP_TIC, as "fd ROW HEX"
+ * lines, to compare with the host engine's -hostshot when a hash differs.
+ * Waits for the log to drain rather than drop a row: the one place core 0
+ * waits on the UART, against §6.2, and only in a build made to look at
+ * one tic, where the run's timing no longer matters. */
+static void dump_frame(const uint8_t *px) {
+    static const char hex[] = "0123456789abcdef";
+    char line[16 + 2 * FRAMEPOOL_W];
+    for (unsigned y = 0; y < FRAMEPOOL_ROWS; y++) {
+        int n = snprintf(line, 16, "fd %u ", y);
+        for (unsigned x = 0; x < FRAMEPOOL_W; x++) {
+            uint8_t v = px[y * FRAMEPOOL_W + x];
+            line[n++] = hex[v >> 4];
+            line[n++] = hex[v & 15];
+        }
+        line[n++] = '\n';
+        line[n] = 0;
+        while (log_free() < (uint32_t)n + 16u) busy_wait_us_32(1000);
+        fputs(line, stdout);
+    }
+}
+
+static void hash_frame(const uint8_t *px) {
+    uint8_t rgb[256 * 3];
+    for (unsigned c = 0; c < 256; c++) {
+        rgb[3 * c + 0] = colors[c].r;
+        rgb[3 * c + 1] = colors[c].g;
+        rgb[3 * c + 2] = colors[c].b;
+    }
+    static bool dumped;
+    if (gametic == PICOCALC_DOOM_FRAME_DUMP_TIC && !dumped) {
+        dumped = true;
+        dump_frame(px);
+    }
+    frame_hash_tic_t done;
+    if (frame_hash_note(&s_hash_held, gametic, frame_hash_frame(px, FRAME_BYTES, rgb), &done)) {
+        printf("fh %d %08lx\n", done.tic, (unsigned long)done.crc);
+    }
+}
+#endif
+
+void video_hash_flush(void) {
+#if PICOCALC_DOOM_FRAME_HASHES
+    frame_hash_tic_t done;
+    if (frame_hash_flush(&s_hash_held, &done)) {
+        printf("fh %d %08lx\n", done.tic, (unsigned long)done.crc);
+    }
+#endif
+}
 
 static void claim(void) {
     uint32_t irq = spin_lock_blocking(s_lock);
@@ -103,6 +198,10 @@ void DG_DrawFrame(void) {
         memset(px + FRAME_BYTES - m, 0, m);
         g_video.margins++;
     }
+
+#if PICOCALC_DOOM_FRAME_HASHES
+    hash_frame(px);
+#endif
 
     /* Core 1 reads through the uncached alias: the frame must be in the
      * PSRAM, not only in the cache (hardware-notes.md §9.3). */

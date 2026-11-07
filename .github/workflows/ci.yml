@@ -69,6 +69,19 @@ jobs:
           cmake -S . -B build/pico-release -DCMAKE_BUILD_TYPE=Release -DPICOCALC_DOOM_UART=OFF
           cmake --build build/pico-release -j "$(nproc)"
 
+      # The gate's switches (§16 M5), so the controls and levers keep
+      # building: strategy A, the colormaps and drawers in SRAM, the frame
+      # hashes and a frame dump. Not uploaded.
+      - name: Build the levers and the hashes
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: |
+          cmake -S . -B build/pico-levers -DCMAKE_BUILD_TYPE=Release \
+            -DPICOCALC_DOOM_VIDEO_BUF=A -DPICOCALC_DOOM_COLORMAPS_SRAM=ON \
+            -DPICOCALC_DOOM_DRAWERS_SRAM=ON -DPICOCALC_DOOM_FRAME_HASHES=ON \
+            -DPICOCALC_DOOM_FRAME_DUMP_TIC=100
+          cmake --build build/pico-levers -j "$(nproc)"
+
       - uses: actions/upload-artifact@v4
         with:
           name: picocalc-doom-uf2

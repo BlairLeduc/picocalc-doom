@@ -16,14 +16,24 @@
  *   -hostzone MB      the zone's size; the device's 3 MB by default (§12.2)
  *   -hostzonefill B   fill the zone with byte B before Doom uses it
  *   -hostzoneoffset N move the zone's base N bytes (a multiple of 16)
- *                     The last two change what a read of memory Doom never
- *                     wrote, or of a zone block's header, returns: a frame
- *                     whose hash changes with them depends on such a read
- *                     and cannot match the device's (scripts/host_engine.sh)
+ *   -hostzonepad N    allocate N bytes more than asked for each zone block,
+ *                     filled with -hostzonefill's byte: what a read past a
+ *                     block's end finds. The renderer reads up to 127 bytes
+ *                     past a sprite's lump when a column's first row maps
+ *                     to texture row -1 (as vanilla Doom does), and on the
+ *                     device that lands in the next block, behind a header
+ *                     of another size than the host's
+ *                     The last three change what a read of memory Doom never
+ *                     wrote, of a zone block's header, or past a block's end
+ *                     returns: a frame whose hash changes with them depends
+ *                     on such a read and cannot match the device's
+ *                     (scripts/host_engine.sh)
  *   -hostclock        a virtual clock: time passes only when Doom sleeps,
  *                     so -hosttics runs as fast as the host can draw
  *   -hostshot TIC FILE  write the last frame drawn at game tic TIC to FILE,
- *                     a PPM, to look at; -1 for the last frame of the run
+ *                     a PPM, to look at; -1 for the last frame of the run.
+ *                     A FILE ending in .raw gets the 320 x 240 palette
+ *                     indices instead, to set beside a device's frame dump
  *
  * Results are lines on stdout beginning "host:", for the script to read
  * among Doom's own messages.
@@ -74,6 +84,8 @@ static uint32_t virtual_ms;
 
 /* The zone, sampled each frame, and the WAD's reads, counted. */
 static int zone_size;
+static int zone_pad;                /* -hostzonepad */
+static int zone_fill;               /* -hostzonefill */
 static int zone_low_free = -1;      /* least free or purgeable, bytes */
 static unsigned long reads, read_bytes;             /* all of them */
 static unsigned long play_reads, play_bytes;        /* once a level is drawn */
@@ -138,6 +150,12 @@ static void write_shot(void)
     FILE *f = fopen(shot_file, "wb");
     if (f == NULL) {
         perror(shot_file);
+        return;
+    }
+    size_t n = strlen(shot_file);
+    if (n > 4 && strcmp(shot_file + n - 4, ".raw") == 0) {
+        fwrite(DG_ScreenBuffer, 1, DOOMGENERIC_RESX * DOOMGENERIC_RESY, f);
+        fclose(f);
         return;
     }
     fprintf(f, "P6\n%d %d\n255\n", DOOMGENERIC_RESX, DOOMGENERIC_RESY);
@@ -488,7 +506,22 @@ byte *I_ZoneBase(int *size)
     }
     p += offset;
     i = M_CheckParmWithArgs("-hostzonefill", 1);
-    memset(p, i ? (int)strtol(myargv[i + 1], NULL, 0) : 0, (size_t)*size);
+    zone_fill = i ? (int)strtol(myargv[i + 1], NULL, 0) : 0;
+    memset(p, zone_fill, (size_t)*size);
+    i = M_CheckParmWithArgs("-hostzonepad", 1);
+    zone_pad = i ? atoi(myargv[i + 1]) : 0;
+    return p;
+}
+
+/* Upstream's Z_Malloc, renamed for this build (CMakeLists.txt). */
+void *host_Z_Malloc_upstream(int size, int tag, void *user);
+
+void *Z_Malloc(int size, int tag, void *user)
+{
+    byte *p = host_Z_Malloc_upstream(size + zone_pad, tag, user);
+    if (zone_pad > 0) {
+        memset(p + size, zone_fill, (size_t)zone_pad);
+    }
     return p;
 }
 

@@ -7,10 +7,12 @@
  * publishes it with its palette and claims the next (video_shim.c).
  * Core 1 reaches it through the calls below.
  *
- * Strategy A of §7.3: I_VideoBuffer stays in the zone, upstream's copy
- * unchanged. Core 1 reads a frame by DMA from the PSRAM's uncached alias
- * into an SRAM row, a row ahead (hardware-notes.md §4.7, §9.3), so core 0
- * cleans the buffer's lines out of the XIP cache at publish.
+ * §7.3's strategy B by default (M5): Doom draws into an SRAM buffer
+ * (PICOCALC_DOOM_VIDEO_BUF), and upstream's copy, unchanged, moves it
+ * into the pool; A, the zone's buffer in the PSRAM, is the control.
+ * Core 1 reads a frame by DMA from the PSRAM's uncached alias into an
+ * SRAM row, a row ahead (hardware-notes.md §4.7, §9.3), so core 0 cleans
+ * the buffer's lines out of the XIP cache at publish.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -24,6 +26,10 @@
  * scratch region: the three buffers cleared, the pool, and the first
  * buffer claimed as DG_ScreenBuffer. */
 void video_init(void);
+
+/* Core 0: the last tic's frame hash out to the log, in a hash build
+ * (M5, §15); nothing otherwise. Called when Doom stops. */
+void video_hash_flush(void);
 
 /* Core 1: the newest published frame, or -1; then give it back. */
 int  video_take(void);

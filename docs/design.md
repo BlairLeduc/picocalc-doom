@@ -486,17 +486,20 @@ from Doom's buffer into a frame is the first cost to watch: Quest found
 64–83 % of core 0 in PSRAM-to-PSRAM copies before it cut them (HW §2.4).
 Upstream draws into the zone, so PSRAM, and copies PSRAM to PSRAM.
 
-| Strategy | Core 0 per frame, **estimated** | SRAM | Notes |
+| Strategy | Core 0 per frame | SRAM | Notes |
 |---|---:|---:|---|
-| A. Upstream: `I_VideoBuffer` in the zone, CPU copy to the pool | ~9.6 ms copy (HW §2.4's 8 MB/s), and the renderer's column writes through the XIP cache | 0 | At 35 frames a second, a third of core 0 in the copy alone |
-| B. `I_VideoBuffer` in SRAM, CPU copy to the pool through the cached window | a few ms (not measured on this board) | 76,800 | The renderer writes SRAM; one patched line (§5.3) |
-| C. As B, the copy by DMA to the pool through the uncached alias | ~0, plus a wait at the start of the next render | 76,800 | Overlaps the copy with the next tic's game logic; patches `I_FinishUpdate()` |
+| A. Upstream: `I_VideoBuffer` in the zone, CPU copy to the pool | **9.7 ms** copy, measured (M3, M5), and the renderer's column writes through the XIP cache | 0 | `-timedemo demo1` **28.0 fps** (M5) |
+| B. `I_VideoBuffer` in SRAM, CPU copy to the pool through the cached window | **6.1 ms** copy, measured (M5) | 76,800 | `-timedemo demo1` **44.2 fps** (M5). A shim, not a patch: `I_InitGraphics()` wrapped, `I_VideoBuffer` repointed after it |
+| C. As B, the copy by DMA to the pool through the uncached alias | ~0, plus a wait at the start of the next render | 76,800 | Overlaps the copy with the next tic's game logic; patches `I_FinishUpdate()`. Under B the copy is still a quarter of core 0 (M5's profile) |
 
 **Start with A**, which needs no patch, to get pictures in M3; **measure B
 in M5**, where it is the first lever of the gate; C is an M9 lever. The
 choice is a build switch (`PICOCALC_DOOM_VIDEO_BUF`), so each is a control
 for the others (EL §12). B and C fit only with the WAD directory moved to
-PSRAM (§12.1).
+PSRAM (§12.1). **M5 kept B**, the default since: it alone passes the gate
+(§16). Upstream's zone block for the buffer stays allocated and unused, so
+the zone's layout stays the host engine's and the frame hashes compare
+(§15).
 
 Core 1 reads frames from PSRAM as Quest settled in its M2: by DMA from the
 uncached alias into an SRAM row a row ahead, which cost core 0 least
@@ -1260,16 +1263,23 @@ not a CTest, since it needs WADs, which never go in the repository:
   during `-timedemo demo1`, one per game tic: the last frame drawn in it,
   since a screen wipe draws as many frames in one tic as real time allows
   (`picocalc/frame_hash.c`, shared with the device). The list is made four
-  times with the zone filled and placed differently; a tic whose hash
-  changes read memory Doom never wrote (a sprite's top row can read past
-  its patch, as in vanilla) and is marked to be skipped. The list is
+  times with the zone filled and placed differently, and every zone block
+  followed by 128 bytes of the fill (`-hostzonepad`); a tic whose hash
+  changes read memory Doom never wrote, or past a block's end, and is
+  marked to be skipped. A sprite column whose first row maps to texture
+  row −1 reads row 127, up to 127 bytes past its lump, as in vanilla. On the
+  device that is the next block, behind a 24-byte header where the host's
+  is 40, so only the padding catches it (M5: 7 of demo 1's 1,709 tics). The list is
   `test/host/engine/doom-demo1.crc`, made from The Ultimate Doom 1.9
   (§10.4); a CTest checks it still matches when that `doom.wad` is to
   hand, and skips, saying so, when `reference/doom.wad` is another (the
   list's header carries the MD5). **The same list from the device** shows
   the engine on the board is the host's (EL §13.3), and it is the check that
   catches a marginal PSRAM or flash timing, which corrupts quietly
-  (HW §3).
+  (HW §3). A build with `PICOCALC_DOOM_FRAME_HASHES=ON` logs the list as
+  `fh TIC CRC` lines, and `scripts/host_engine.sh compare` reads them from
+  the capture; `PICOCALC_DOOM_FRAME_DUMP_TIC` adds one tic's frame as hex
+  rows, to set beside the host engine's `-hostshot TIC FILE.raw`.
 - **Zone low-water**, warping to every map of every IWAD to hand and
   running a minute of tics in each (§12.2), and the WAD directory's size
   (§12.1).
@@ -1416,12 +1426,18 @@ the levers in order, each against the last as a control, and measure again
 before any other milestone:
 
 1. `I_VideoBuffer` in SRAM (§7.3, strategy B).
-2. The colormaps in SRAM (8,704 bytes, a patch to `R_InitColormaps()`):
-   every pixel looks one up, from the zone in PSRAM through the cache the
-   code needs.
+2. The colormaps in SRAM (8,704 bytes): every pixel looks one up, from
+   the zone in PSRAM through the cache the code needs. A shim, not a
+   patch: `R_Init()` wrapped, the lump copied and `colormaps` repointed,
+   `R_InitLightTables()` run again (`PICOCALC_DOOM_COLORMAPS_SRAM`,
+   `picocalc/render_sram.c`). Measured in M5 over B: demo 1 44.2 → 46.4
+   fps, demo 4 34.4 → 35.7; needed for demo 4, so kept, on by default.
 3. `R_DrawColumn`, `R_DrawSpan`, their low-detail and fuzz variants, and
    the masked-column path in SRAM (HW §9.2, §9.8: check each symbol and its
-   callers with `nm`).
+   callers with `nm`). No patch: before the link, `cmake/sram_sections.cmake`
+   renames their sections in `r_draw.c`'s and `r_things.c`'s objects to
+   the SDK's `.time_critical.*`, which its linker script puts in SRAM
+   (`PICOCALC_DOOM_DRAWERS_SRAM`).
 4. The copy by DMA (§7.3, strategy C).
 
 Only if those fall short does the owner decide on a higher clock (D7).
@@ -1530,8 +1546,8 @@ milestone named.
 | Lumps per IWAD (§12.1) | 2,306 / 2,919 / 2,984 / 3,101 (The Ultimate Doom, Doom II, Plutonia, TNT, 1.9); the re-release's 2–9 more; shareware ~1,264 | the owner's WADs, read 2026-11-06 and -07 (§10.4) | confirmed, but the shareware count | Confirmed 2026-11-07 |
 | This engine runs the 2024 re-release IWADs (extra lumps such as `GAMECONF`, `SKYDEFS`, `UMAPINFO`, ignored) | yes, once its 560- and 576-wide pictures are centred (§7.6) | the host engine: every demo and every map of the four IWADs and both PWADs, 2026-11-06; the 1.9 IWADs the same, 2026-11-07 | confirmed on the host | Confirmed 2026-11-06, M2; on the device, Doom II's title, demos and credits on the panel, 2026-11-07, M3 |
 | A 3 MB zone holds every map of the commercial IWADs | yes: 0.8 MB left at worst (No Rest for the Living MAP04), 1.4 MB on the IWADs, 1.9 or re-release | the host engine, every map (§12.2) | confirmed on the host | Confirmed 2026-11-07, M2; card reads in play on the device, M5 |
-| SRAM left after the port, with `I_VideoBuffer` in SRAM and the directory in PSRAM | ~40 KB | §12.1's estimate on §3.4's build | medium | M0, M5 |
-| Core 0's default stack is enough for Doom | yes: 2,004 of 3,072 B under Doom II's demos | M1, painted | medium: 1 KB to spare | M3–M5, on the big maps |
+| SRAM left after the port, with `I_VideoBuffer` in SRAM and the directory in PSRAM | 60,644 B (development), 64,812 B (release), with COLORMAP in SRAM too | `end` to `__HeapLimit`, M5's builds | confirmed | Confirmed 2026-11-07, M5; audio's buffers (§12.1) come out of it in M6 |
+| Core 0's default stack is enough for Doom | yes: 2,116 of 3,072 B under The Ultimate Doom's four demos (M5); 2,004 under Doom II's | M1, M5, painted | medium: 956 B to spare | M5's play, M9's soak, on the big maps |
 | Upstream's renderer changes do not desync vanilla demos | yes | the host engine: all 19 demos play to their ends, with kills and items of real play; not yet compared exactly with stock doomgeneric | high | M2's exact comparison, when the owner allows it |
 | POWMAN timer unaffected by the move to 300 MHz | yes: 2 ms across 1.5–2.0 ms | M1, both boards (HW §1.2) | confirmed | Confirmed 2026-11-06, M1 |
 | The image fits UF2 Loader's partition | yes; 563 KB upstream | §3.4; HW §2.7 | high | M10 |

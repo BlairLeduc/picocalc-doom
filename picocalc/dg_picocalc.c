@@ -326,6 +326,7 @@ void I_Error(char *error, ...)
     va_start(ap, error);
     vsnprintf(message, sizeof message, error, ap);
     va_end(ap);
+    video_hash_flush();
     FRANK_DOOM_LOG("I_Error: %s\n", message);
     page_show_message(PAGE_DOOM_ERROR, message);
     /* Keys queued when Doom stopped are not the answer, and a key held
