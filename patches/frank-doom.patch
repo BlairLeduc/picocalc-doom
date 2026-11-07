@@ -1,0 +1,27 @@
+--- a/drivers/sdcard/sdcard.c
++++ b/drivers/sdcard/sdcard.c
+@@ -51,7 +51,12 @@
+ #define CT_BLOCK       0x08            /* Block addressing */
+ 
+ #define CLK_SLOW	(100 * KHZ)
+-#define CLK_FAST	(30 * MHZ)
++/* picocalc-doom: overridable; the PicoCalc builds with 25 MHz, the
++ * conservative operating point for its card slot (design.md §10.1). */
++#ifndef SDCARD_CLK_FAST
++#define SDCARD_CLK_FAST	(30 * MHZ)
++#endif
++#define CLK_FAST	SDCARD_CLK_FAST
+ 
+ static volatile
+ DSTATUS Stat = STA_NOINIT;	/* Physical drive status */
+@@ -455,7 +460,9 @@
+ 
+ 
+ 
+-#if !FF_FS_READONLY && !FF_FS_NORTC
++/* picocalc-doom: SDCARD_EXTERNAL_FATTIME leaves get_fattime() to the
++ * PicoCalc clock (design.md §13.2). */
++#if !FF_FS_READONLY && !FF_FS_NORTC && !defined(SDCARD_EXTERNAL_FATTIME)
+ /* get the current time */
+ DWORD get_fattime (void)
+ {
