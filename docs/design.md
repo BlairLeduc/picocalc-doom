@@ -511,7 +511,7 @@ Upstream draws into the zone, so PSRAM, and copies PSRAM to PSRAM.
 |---|---:|---:|---|
 | A. Upstream: `I_VideoBuffer` in the zone, CPU copy to the pool | **9.7 ms** copy, measured (M3, M5), and the renderer's column writes through the XIP cache | 0 | `-timedemo demo1` **28.0 fps** (M5) |
 | B. `I_VideoBuffer` in SRAM, CPU copy to the pool through the cached window | **6.1 ms** copy, measured (M5) | 76,800 | `-timedemo demo1` **44.2 fps** (M5). A shim, not a patch: `I_InitGraphics()` wrapped, `I_VideoBuffer` repointed after it |
-| C. As B, the copy by DMA to the pool through the uncached alias | **0.11 ms** to start it, measured (M9), and waits for it of 3–12 ms a second in all | 76,800 | `-timedemo demo1` **57.2 fps** against B's 44.5 in the same sitting (M9). A shim, not a patch: `I_FinishUpdate()`'s wrap replaces upstream's |
+| C. As B, the copy by DMA to the pool through the uncached alias | **0.11 ms** to start it, measured (M9), and waits for it of 3–12 ms a second in all | 76,800 | `-timedemo demo1` **57.2 fps** against B's 44.5 in the same sitting, at screen size 9 (M9); 55.7 at 10 with the drawers in SRAM. A shim, not a patch: `I_FinishUpdate()`'s wrap replaces upstream's |
 
 **Start with A**, which needs no patch, to get pictures in M3; **measure B
 in M5**, where it is the first lever of the gate; C is an M9 lever, and
@@ -1749,10 +1749,10 @@ published rising in every heartbeat, and the tic count with them.
 
 **Done when** the soak passes and every lever is recorded as kept or
 dropped with its number.
-(Met 2026-11-07, but for power: the soak passed, on battery for 1,180 s
-and on USB after. Kept: strategy C, the drawers in SRAM, dirty rows, the
-mixer in SRAM; the mix ring left at 4 for the owner; demo 1 58.9 and
-demo 4 43.1 fps with audio; `milestones.md`.)
+(Met 2026-11-08: the soak passed on battery at screen size 10. Kept:
+strategy C, the drawers in SRAM, dirty rows, the mixer in SRAM; the mix
+ring left at 4 for the owner; demos 1–4 at 55.7, 59.8, 63.2 and 40.9 fps
+with audio at screen size 10; `milestones.md`.)
 
 ### M10: Release
 

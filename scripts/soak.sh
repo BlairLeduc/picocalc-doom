@@ -37,6 +37,12 @@ mkdir -p "$(dirname "$log")"
 capture=$!
 trap 'kill $capture 2>/dev/null || true' INT TERM
 sleep 1
+# A capture that could not open the probe's port (another still holding
+# it) ends at once and leaves no log.
+if ! kill -0 $capture 2>/dev/null; then
+    echo "soak.sh: the capture did not start; is the probe's port in use?" >&2
+    exit 1
+fi
 "$root/scripts/flash.sh" "$image" > /dev/null 2>&1 ||
     { echo "soak.sh: flash.sh failed" >&2; kill $capture; exit 1; }
 

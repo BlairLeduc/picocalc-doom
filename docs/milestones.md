@@ -10,16 +10,19 @@ and done-when criteria; this file keeps the full record.
 flashed over SWD with `scripts/flash.sh`; development builds, Arm GCC
 15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V; UART0 captured. The card
 held the original 1.9 IWADs, M7's `picocalc.ini` (`iwad = doom.wad`,
-`args = -skill 4`) and M8's `default.cfg` (screen size 9), so every run
-here is at screen size 9, not M5's and M6's 10: the frame rates compare
-within this milestone, not with theirs. Built, run and read by Claude;
-the owner did not play or look at the panel in this milestone.
+`args = -skill 4`) and the `default.cfg` M8's persistence check left at
+screen size 9 (Found). The levers were measured at 9, each against its
+control at 9; the soak and the final gate were run again at 10, the
+owner's size, on 2026-11-08 after `=` and F10 `y` put it back. Built, run
+and read by Claude; the owner did not play or look at the panel in this
+milestone.
 
 ### Done when
 
 | Check | Result |
 |---|---|
-| The 30-minute soak passes | **passed**, `scripts/soak.sh 30`, `soak_check.sh`: one boot; 1,905 heartbeats in play, every second; 4,850 keys taken, some in every minute; late refills, I²C errors, log lines dropped, keys lost, OPL late halves and dropped writes **0** throughout; **no underrun** after the first slot; frames published, the game tic and the level tic rising in every heartbeat. **Power: battery for the first 1,180 s, then USB** (the charging bit from heartbeat 1180 to the end, the battery 94 % to 100 %): not all on battery |
+| The 30-minute soak passes, on battery | **passed** at screen size 10, 2026-11-08, `scripts/soak.sh 30`, `soak_check.sh`: one boot; 1,905 heartbeats in play, every second; 4,852 keys taken, some in every minute; late refills, I²C errors, log lines dropped, keys lost, OPL late halves and dropped writes **0** throughout; **no underrun**; frames published, the game tic and the level tic rising in every heartbeat; **on battery throughout** (the charging bit clear in every heartbeat, the battery 100 % to 98 %) |
+| The same at screen size 9 | **passed**, 2026-11-07, with the same counts (4,850 keys); battery for the first 1,180 s, then USB |
 | Every lever recorded as kept or dropped with its number | below |
 
 ### The levers
@@ -35,9 +38,16 @@ Each against the last kept as its control, in one sitting.
 | A smaller mix ring (§8.3) | 4 slots | 3 slots: heap +5.7 KB, effect latency 86 ms, 1 slot underrun in demo 1; 2 slots: +11.4 KB, 57 ms, 3 underruns | **not taken**: 4 stays the default; the owner's to choose by ear (`PICOCALC_DOOM_MIX_RING`) |
 | More of Doom in the gap | the profile | core 0 under C + drawers, demo 1, 20 s: `R_DrawColumn` 15.9 %, `R_DrawSpan` 9.2 % (both SRAM), then `P_MobjThinker` 6.0 %, `I_Pico_UpdateSound` 5.9 %, `R_RenderSegLoop` 5.5 %, the card's SPI 4.7 %; 61 % in flash. Nothing left worth the SRAM | **not built** |
 
-The gate with every lever kept, audio on: demo 1 **58.9**, demo 4 **43.1**
-fps (demos 2 and 3 measured with C alone, 61.3 and 65.6). Every demo is
-above 35 again (M6 left demo 4 at 32.1, at screen size 10).
+The gate with every lever kept, audio on, at screen size 10 (2026-11-08,
+against M6's at 10):
+
+| | Demo 1 | Demo 2 | Demo 3 | Demo 4 |
+|---|---:|---:|---:|---:|
+| M6 | 41.6 | 43.8 | 45.8 | 32.1 |
+| **M9** | **55.7** | **59.8** | **63.2** | **40.9** |
+
+Every demo is above 35 again. At screen size 9 the same build gave demo
+1 58.9 and demo 4 43.1.
 
 | Strategy C | B | C |
 |---|---:|---:|
@@ -66,18 +76,32 @@ still at E1M1's start (Found).
 
 `scripts/soak.sh 30`: E1M1 at skill 4 with `iddqd` and `idkfa`, a 12-second
 round of keys (walk, turn, strafe, fire three weapons, use) over the UART
-for 30 minutes. Drawn 66.2 frames a second, presented 64.0 (dirty rows
-send a repeated frame in about 2 ms); core 0 busy 75.4 %; die 23–25 °C;
-heap 4,512 of 8,608 B; stacks: core 0 2,016 of 3,072 B, core 1 1,148 of
-2,048 B. The level loaded once, in 661 ms.
+for 30 minutes.
+
+| | Screen size 10, battery | Screen size 9 |
+|---|---:|---:|
+| Drawn, presented a second | 64.4, 58.9 | 66.2, 64.0 |
+| Rows sent a frame (of 240) | 98.7 | 80.1 |
+| Core 0 busy | 79.3 % | 75.4 % |
+| Die | 21–24 °C | 23–25 °C |
+| Stacks, core 0 and core 1 | 2,032, 1,148 B | 2,016, 1,148 B |
+| The level's load | 662 ms | 661 ms |
+
+The heap's high mark 4,512 of 8,608 B in both. Dirty rows send a
+repeated frame in about 2 ms.
 
 ### Found
 
+- **M8's persistence check left the card at screen size 9**: it pressed
+  `-` to prove a change survives, and nothing put it back, so this
+  milestone's lever runs were at 9 until the owner noticed. A test that
+  changes saved state must restore it, and the record name the state
+  each run met (emulator-lessons.md §12).
 - **`-timedemo` had stopped since M8** with "Z_Free: freed a pointer
   without ZONEID": upstream's `V_DrawPatch()` moves patches at y ≥ 168
   down 40 rows for the status bar, also inside the view border's 208-row
   buffer, so at screen sizes 8 and 9 the border went past the buffer into
-  the next zone block. M8's `default.cfg` kept the owner's size 9. M7's
+  the next zone block. M8's `default.cfg` held size 9. M7's
   build played; M8's with `-config none.cfg` played; the host engine,
   given each size and a heap check a frame, failed at 8 and 9. A
   `v_video.c` hunk moves patches on the screen only (design.md §7.1).
@@ -120,7 +144,8 @@ hashes`. **The patch** gains two hunks: `v_video.c`'s, and
 - **The panel by eye** with dirty rows: menus, the automap, the
   intermission, palette flashes, pages coming and going. The frame hashes
   check what core 0 publishes, not what core 1 sends.
-- A soak wholly on battery: USB power came on after 1,180 s.
+- The levers each against its control at screen size 10 (measured at 9;
+  the final build's gate and soak at 10).
 - The mix ring's size by ear (effect latency 114 ms at 4 slots).
 - The release build on the device, and the Plus 2 (M10).
 - Demos 2 and 3 with the drawers; Doom II, Plutonia, TNT under `-timedemo`.

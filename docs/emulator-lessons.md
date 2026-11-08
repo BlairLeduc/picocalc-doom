@@ -1963,6 +1963,15 @@ emulator specifically:
   the panel was frozen on its first frame. The per-second row counts in
   the heartbeat, against a scene known to move, showed it; the frame rate
   alone looked like a win.
+- **A test that changes saved settings puts them back, and each
+  measurement names the settings it met.** A check that a settings change
+  survives a power cycle made Doom's screen one size smaller and left it
+  so; the next milestone measured every lever and a 30-minute soak at
+  that size before the owner noticed. The comparisons between builds
+  held, all at the same size, but the frame rates did not compare with
+  earlier milestones', and the soak had not tested the size played. Note
+  the settings file's state (or its key values from the log) in each run's
+  record, and restore anything a test changes before the next test.
 
 ---
 
