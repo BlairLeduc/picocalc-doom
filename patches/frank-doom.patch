@@ -82,7 +82,7 @@
  		dc_yl = pl->top[x];
 --- a/src/doomgeneric/doomgeneric/v_video.c
 +++ b/src/doomgeneric/doomgeneric/v_video.c
-@@ -157,6 +157,7 @@
+@@ -157,13 +157,31 @@
      byte *dest;
      byte *source;
      int w;
@@ -90,10 +90,18 @@
  
      y -= SHORT(patch->topoffset);
      x -= SHORT(patch->leftoffset);
-@@ -166,6 +167,18 @@
+     
+     // Offset status bar area by 40 pixels to position at bottom of 240-line display
+-    if (y >= 168) {
++    /* picocalc-doom: on the screen only. R_FillBackScreen() draws the
++     * view's border into its own 208-row buffer, in its own rows, and at
++     * screen sizes 8 and 9 the border's bottom edge, moved down 40, was
++     * drawn past that buffer's end, over the next zone block (design.md
++     * §7.1). */
++    if (y >= 168 && dest_screen == I_VideoBuffer) {
          y += 40;
-     }
- 
++    }
++
 +    /* picocalc-doom: the 2024 re-release's full-screen pictures are 560
 +     * pixels wide and its status bar 576, with the 320 the game draws in
 +     * the middle. Centre a patch wider than the screen and crop it to the
@@ -104,12 +112,10 @@
 +    if (wide)
 +    {
 +        x -= (SHORT(patch->width) - SCREENWIDTH) / 2;
-+    }
-+
+     }
+ 
      // haleyjd 08/28/10: Strife needs silent error checking here.
-     if(patchclip_callback)
-     {
-@@ -175,8 +188,7 @@
+@@ -175,8 +193,7 @@
  
  #ifdef RANGECHECK
      // Clamp rather than error - some patches may be partially off-screen after Y offset
@@ -119,7 +125,7 @@
       || y < 0
       || y + SHORT(patch->height) > SCREENHEIGHT)
      {
-@@ -187,12 +199,25 @@
+@@ -187,12 +204,25 @@
      }
  #endif
  

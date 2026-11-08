@@ -458,6 +458,16 @@ So both readings of "320×200 (240?)" hold: in play the 240-row frame is
 centred, and outside a level the 200-row screen inside it is centred too.
 Pixels are 1:1; nothing is scaled (EL §5.4).
 
+**The smaller screen sizes** (3–9, Doom's `-` key) put a border round the
+view, drawn by `R_FillBackScreen()` into a 208-row buffer in the zone.
+Upstream moves every patch at y ≥ 168 down 40 rows for the status bar,
+and did it in that buffer too: at sizes 8 and 9 the border's bottom edge
+went past the buffer's end, over the next zone block, and once M8 kept
+the size in `default.cfg` every `-timedemo` stopped with "Z_Free: freed a
+pointer without ZONEID" (found in M9). The patch moves patches on the
+screen only (`v_video.c`); `test_engine_screens` plays demo 1 at every
+size with the zone checked after each frame.
+
 ### 7.2 The frame pool
 
 HDMI scans one buffer for ever and never falls behind; a presenter on the
@@ -501,10 +511,11 @@ Upstream draws into the zone, so PSRAM, and copies PSRAM to PSRAM.
 |---|---:|---:|---|
 | A. Upstream: `I_VideoBuffer` in the zone, CPU copy to the pool | **9.7 ms** copy, measured (M3, M5), and the renderer's column writes through the XIP cache | 0 | `-timedemo demo1` **28.0 fps** (M5) |
 | B. `I_VideoBuffer` in SRAM, CPU copy to the pool through the cached window | **6.1 ms** copy, measured (M5) | 76,800 | `-timedemo demo1` **44.2 fps** (M5). A shim, not a patch: `I_InitGraphics()` wrapped, `I_VideoBuffer` repointed after it |
-| C. As B, the copy by DMA to the pool through the uncached alias | ~0, plus a wait at the start of the next render | 76,800 | Overlaps the copy with the next tic's game logic; patches `I_FinishUpdate()`. Under B the copy is still a quarter of core 0 (M5's profile) |
+| C. As B, the copy by DMA to the pool through the uncached alias | **0.11 ms** to start it, measured (M9), and waits for it of 3–12 ms a second in all | 76,800 | `-timedemo demo1` **57.2 fps** against B's 44.5 in the same sitting (M9). A shim, not a patch: `I_FinishUpdate()`'s wrap replaces upstream's |
 
 **Start with A**, which needs no patch, to get pictures in M3; **measure B
-in M5**, where it is the first lever of the gate; C is an M9 lever. The
+in M5**, where it is the first lever of the gate; C is an M9 lever, and
+**M9 kept it**, the default since. The
 choice is a build switch (`PICOCALC_DOOM_VIDEO_BUF`), so each is a control
 for the others (EL §12). B and C fit only with the WAD directory moved to
 PSRAM (§12.1). **M5 kept B**, the default since: it alone passes the gate
@@ -517,6 +528,24 @@ uncached alias into an SRAM row a row ahead, which cost core 0 least
 (HW §4.7, §9.3). The uncached reads need the writer to clean the buffer's
 lines out of the XIP cache at publish, 0.45–0.69 ms a frame (HW §9.3);
 under C the DMA writes past the cache and needs no clean.
+
+**C as built (M9).** `I_FinishUpdate()`'s wrap does upstream's work
+itself: the palette, the margins (blacked past the cache when the margins
+rule asks), and a DMA of the 240 rows, or Doom's 200 to rows 20–219, from
+the SRAM frame to the pool buffer's uncached alias. The channel's
+interrupt (`DMA_IRQ_0`; the audio has `DMA_IRQ_1`) publishes the buffer
+and claims the next. Core 0 runs the next tic meanwhile, and waits for
+the copy before anything can draw into `I_VideoBuffer`: after
+`S_UpdateSounds()`, the last call before `D_Display()` in
+`doomgeneric_Tick()`; before each step of the screen wipe, whose loop
+draws and finishes frames inside `D_Display()`; and at the next
+`I_FinishUpdate()`. Nothing in `TryRunTics()` draws (`I_BeginRead()` is
+empty: no disk icon). `PICOCALC_DOOM_COPY_CHECK` proves it on the board,
+comparing the pool's frame with Doom's at each wait: 1,708 frames of
+demo 1, none different. The copy takes 4.4–4.7 ms a frame by DMA (the
+longest 6.4), against 6.2 ms of core 0's under B; core 1's present rose
+from 21.3 to 22.8 ms under `-timedemo`, the two sharing the QMI, and at
+real speed both present 37.5 frames a second.
 
 ### 7.4 The presenter
 

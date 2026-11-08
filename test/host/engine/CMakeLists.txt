@@ -65,6 +65,12 @@ add_test(NAME test_engine_demo1
             $<TARGET_FILE:doom_host> ${PROJECT_SOURCE_DIR})
 set_tests_properties(test_engine_demo1 PROPERTIES SKIP_RETURN_CODE 77)
 
+# Every screen size plays demo1 to its end with the zone intact (M9).
+add_test(NAME test_engine_screens
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_engine_screens.sh
+            $<TARGET_FILE:doom_host> ${PROJECT_SOURCE_DIR})
+set_tests_properties(test_engine_screens PROPERTIES SKIP_RETURN_CODE 77)
+
 # Doom uses POSIX and BSD calls (strdup, strcasecmp) and dg_host.c uses
 # clock_gettime: GNU C, so glibc declares them, as Chocolate Doom builds.
 set_target_properties(doom_host PROPERTIES C_EXTENSIONS ON)
