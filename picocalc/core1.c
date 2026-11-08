@@ -38,6 +38,9 @@ volatile uint32_t g_core0_sleep_us;
 volatile uint32_t g_core0_frames;
 volatile uint32_t g_core0_stack;
 volatile uint32_t g_core0_heap;
+volatile uint32_t g_core0_tic;
+volatile uint32_t g_core0_leveltime;
+volatile uint32_t g_core0_gamestate;
 
 #define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 
@@ -459,7 +462,7 @@ void core1_main(void) {
                    "dropped %lu; copy %lu us (max %lu), publish %lu us (max %lu), "
                    "present %lu us (max %lu), margins %lu; stacks: core 0 %lu of %lu B, "
                    "core 1 %lu of %lu B; heap %lu of %lu B; temp %d C, battery %d%%%s, i2c errors %lu, "
-                   "log dropped %lu, core 1 loops %lu\n",
+                   "log dropped %lu, core 1 loops %lu; game tic %lu, level tic %lu, state %lu\n",
                    (unsigned long)seconds, (unsigned long)(busy / 10u),
                    (unsigned long)(busy % 10u), (unsigned long)(frames - last_frames),
                    (unsigned long)(pub - last_pub), (unsigned long)n_pres,
@@ -476,7 +479,8 @@ void core1_main(void) {
                    temp_c, battery < 0 ? -1 : battery & 0x7f,
                    battery >= 0 && (battery & 0x80) ? " charging" : "",
                    (unsigned long)sb_error_count(), (unsigned long)log_dropped(),
-                   (unsigned long)loops);
+                   (unsigned long)loops, (unsigned long)g_core0_tic,
+                   (unsigned long)g_core0_leveltime, (unsigned long)g_core0_gamestate);
 #if PICOCALC_DOOM_DIRTY_ROWS
             /* Dirty rows' line (M9, §7.4): rows sent to the LCD a frame
              * presented, of 240. */

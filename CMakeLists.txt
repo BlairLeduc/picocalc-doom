@@ -404,6 +404,8 @@ else()
         # The demo's name kept past D_DoomMain() (picocalc/dg_picocalc.c).
         -Wl,--wrap=G_DeferedPlayDemo
         -Wl,--wrap=G_TimeDemo
+        # Each level's load, logged for the soak (picocalc/dg_picocalc.c, M9).
+        -Wl,--wrap=P_SetupLevel
         # A save directory for each game (picocalc/doom_files.c, §10.2).
         -Wl,--wrap=M_GetSaveGameDir
         # A save's write, timed (picocalc/doom_files.c, M8).

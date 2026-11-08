@@ -38,6 +38,13 @@ extern volatile uint32_t g_core0_frames;     /* DG_DrawFrame calls        */
 extern volatile uint32_t g_core0_stack;      /* core0_stack_used(), at the
                                                 last frame, sleep or stop */
 extern volatile uint32_t g_core0_heap;       /* core0_heap_used(), likewise */
+/* Doom's gametic, leveltime and gamestate at the last frame (M9): the
+ * soak's signs of life. Core 1 reads no engine memory (§6.2), so core 0
+ * copies them here. leveltime counts only play: it stops in the menu,
+ * while paused and outside a level. */
+extern volatile uint32_t g_core0_tic;
+extern volatile uint32_t g_core0_leveltime;
+extern volatile uint32_t g_core0_gamestate;
 
 /* The C heap's extent, sbrk's break above `end`: newlib never gives it
  * back, so it is the high-water. Core 0 only (sbrk is not shared). And

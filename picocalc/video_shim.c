@@ -240,8 +240,12 @@ static void black_margins(uint8_t *px) {
     memset(px + FRAME_BYTES - m, 0, m);
 }
 
-/* Core 0's per-frame stack and heap readings, for the heartbeat. */
+/* Core 0's per-frame readings for the heartbeat: the stack, the heap,
+ * and Doom's clocks and state (core1.h). */
 static void note_frame(void) {
+    g_core0_tic = (uint32_t)gametic;
+    g_core0_leveltime = (uint32_t)leveltime;
+    g_core0_gamestate = (uint32_t)gamestate;
     g_core0_frames++;
     g_core0_stack = core0_stack_used();
     g_core0_heap = core0_heap_used();
