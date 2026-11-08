@@ -711,6 +711,16 @@ that ever raises the rail must set it at 150 MHz too, after the clock.
 Found on a Plus 2 W on 2026-09-27 by reading `vreg_get_voltage()` in the
 banner.
 
+**300 MHz at 1.20 V held for 30 minutes of a game with audio.** Measured
+on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc, 2026-11-07,
+development build, Arm GCC 15.2.Rel1, PSRAM at 100 MHz, flash at 75 MHz,
+LCD SPI at 75 MHz: a Chocolate Doom engine played one level with keys
+typed over the UART for 1,905 s, core 0 75 % busy drawing 66 frames a
+second, core 1 presenting them and rendering OPL music, PWM audio at
+49.7 kHz, DMA copying each frame into PSRAM. One boot, no fault, no late
+audio refill, no I²C error; the die read 23–25 °C throughout. Power: the
+batteries for the first 1,180 s, USB (the charging bit set) after.
+
 ---
 
 ## 4. The display

@@ -1749,6 +1749,10 @@ published rising in every heartbeat, and the tic count with them.
 
 **Done when** the soak passes and every lever is recorded as kept or
 dropped with its number.
+(Met 2026-11-07, but for power: the soak passed, on battery for 1,180 s
+and on USB after. Kept: strategy C, the drawers in SRAM, dirty rows, the
+mixer in SRAM; the mix ring left at 4 for the owner; demo 1 58.9 and
+demo 4 43.1 fps with audio; `milestones.md`.)
 
 ### M10: Release
 
@@ -1776,7 +1780,7 @@ milestone named.
 
 | Constant | Value | Source | Confidence | Settled in |
 |---|---|---|---|---|
-| Stable at 300 MHz, 1.20 V, under Doom | yes | HW §3; Quest's soak (other workload) | medium | M5, M9 soak |
+| Stable at 300 MHz, 1.20 V, under Doom | yes | M9's 30-minute soak: one boot, no fault, 23–25 °C | confirmed | Confirmed 2026-11-07, M9 (the release soak in M10) |
 | PSRAM at 100 MHz (divider 3) at 300 MHz | works | the round trip on a Plus 2 W and a Plus 2 (HW §2.4) | confirmed | Confirmed 2026-11-06, M1 |
 | LCD SPI at 75 MHz | works | 75,000,000 Hz returned; the test pattern right | confirmed | Confirmed 2026-11-06, M1 |
 | Flash at 75 MHz (divider 4, RX delay 4) | works | HW §3's sweep, Quest M8; M1 ran on both boards, for minutes | confirmed | Confirmed 2026-11-06, M1; the soak in M9 |
