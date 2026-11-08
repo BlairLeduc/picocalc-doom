@@ -84,18 +84,35 @@ else()
     endif()
     # Where Doom draws (§7.3): A, upstream's I_VideoBuffer in the zone, in
     # the PSRAM; B, a 76,800-byte buffer in SRAM, the gate's first lever,
-    # which M5 kept (44 frames a second against A's 28). A stays as the
-    # control.
-    set(PICOCALC_DOOM_VIDEO_BUF B CACHE STRING "where Doom draws: A (zone, PSRAM) or B (SRAM)")
-    set_property(CACHE PICOCALC_DOOM_VIDEO_BUF PROPERTY STRINGS A B)
-    if (NOT PICOCALC_DOOM_VIDEO_BUF MATCHES "^[AB]$")
-        message(FATAL_ERROR "PICOCALC_DOOM_VIDEO_BUF is A or B, not ${PICOCALC_DOOM_VIDEO_BUF}")
+    # which M5 kept (44 frames a second against A's 28); C, B with the copy
+    # into the pool by DMA, overlapped with the next tic, which M9 kept (57
+    # against B's 44.5 in demo 1). A and B stay as the controls.
+    set(PICOCALC_DOOM_VIDEO_BUF C CACHE STRING "where Doom draws: A (zone, PSRAM), B (SRAM) or C (SRAM, copied by DMA)")
+    set_property(CACHE PICOCALC_DOOM_VIDEO_BUF PROPERTY STRINGS A B C)
+    if (NOT PICOCALC_DOOM_VIDEO_BUF MATCHES "^[ABC]$")
+        message(FATAL_ERROR "PICOCALC_DOOM_VIDEO_BUF is A, B or C, not ${PICOCALC_DOOM_VIDEO_BUF}")
+    endif()
+    # Strategy C's check (M9): when core 0 waits for the copy, the frame in
+    # the pool compared with Doom's, which must not have changed since the
+    # copy began; a difference is logged. Costs a read of the frame past the
+    # cache each frame, so a check build is never the one timed.
+    option(PICOCALC_DOOM_COPY_CHECK "strategy C: compare each copied frame with Doom's (development)" OFF)
+    if (PICOCALC_DOOM_COPY_CHECK AND NOT PICOCALC_DOOM_VIDEO_BUF STREQUAL "C")
+        message(FATAL_ERROR "PICOCALC_DOOM_COPY_CHECK checks strategy C: it needs PICOCALC_DOOM_VIDEO_BUF=C")
     endif()
     # The gate's second lever (§16 M5): COLORMAP, 8,704 bytes, in SRAM.
     # M5 kept it: The Ultimate Doom's demo 4 needed it to reach 35 fps.
     option(PICOCALC_DOOM_COLORMAPS_SRAM "the light tables in SRAM" ON)
     # The third: the column and span drawers in SRAM (cmake/sram_sections.cmake).
-    option(PICOCALC_DOOM_DRAWERS_SRAM "Doom's column and span drawers in SRAM" OFF)
+    # M9 kept it under strategy C: demo 1 57.2 to 58.9 fps, demo 4 41.2 to
+    # 43.1, and no heap: its 1.8 KB sit in the gap the audio's 8 KB-aligned
+    # ring leaves before .bss.
+    option(PICOCALC_DOOM_DRAWERS_SRAM "Doom's column and span drawers in SRAM" ON)
+    # Dirty rows in the presenter (§7.4, M9): a row whose CRC (the DMA
+    # sniffer's, as core 1 reads it) and palette match the frame last
+    # presented is not sent to the LCD again. M9 kept it: turning in E1M1,
+    # a present 20.4 to 10.0 ms, 98 rows a frame of 240.
+    option(PICOCALC_DOOM_DIRTY_ROWS "the presenter sends only the rows that changed" ON)
     # §8.3's first audio lever (M6): upstream's effects mixer and EMU8950's
     # slot renderer and buffer loop in SRAM, out of the XIP cache Doom's
     # renderer needs.
@@ -116,6 +133,13 @@ else()
     # 32,768 (§8.1, M6); saturated, not wrapped.
     set(PICOCALC_DOOM_AUDIO_GAIN 8 CACHE STRING "audio gain over upstream's mix, 1-16")
     set(PICOCALC_DOOM_AUDIO_STALL 0 CACHE STRING "ms core 0's interrupts are masked every 5 s (scratch)")
+    # Upstream's mix ring (§8.3): slots of one tic, 5,684 bytes each, that
+    # the game loop fills ahead of the PWM. Four (upstream's) are 114 ms of
+    # slack and of effect latency.
+    set(PICOCALC_DOOM_MIX_RING 4 CACHE STRING "slots in upstream's mix ring, 2-4")
+    if (NOT PICOCALC_DOOM_MIX_RING MATCHES "^[234]$")
+        message(FATAL_ERROR "PICOCALC_DOOM_MIX_RING is 2, 3 or 4, not ${PICOCALC_DOOM_MIX_RING}")
+    endif()
 
     # Upstream's version, for its own logs: version.txt is "MAJOR MINOR",
     # joined with a dot, as upstream does.
@@ -184,6 +208,8 @@ else()
     # Doom's configuration files read and written on the card (§13.3): the
     # patch compiles m_config.c's file code back in with this, and its
     # stdio calls go to FatFs (picocalc/config_stdio.h).
+    set_property(SOURCE ${PICOCALC_DOOM_UPSTREAM}/src/pico/i_picosound.c
+        APPEND PROPERTY COMPILE_DEFINITIONS MIX_RING_COUNT=${PICOCALC_DOOM_MIX_RING})
     set_property(SOURCE ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/m_config.c
         APPEND PROPERTY COMPILE_DEFINITIONS PICOCALC_DOOM_CONFIG_FILES=1)
 
@@ -327,6 +353,9 @@ else()
         PICOCALC_DOOM_FRAME_HASHES=$<BOOL:${PICOCALC_DOOM_FRAME_HASHES}>
         PICOCALC_DOOM_FRAME_DUMP_TIC=${PICOCALC_DOOM_FRAME_DUMP_TIC}
         PICOCALC_DOOM_VIDEO_BUF_B=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>
+        PICOCALC_DOOM_VIDEO_BUF_C=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>
+        PICOCALC_DOOM_COPY_CHECK=$<BOOL:${PICOCALC_DOOM_COPY_CHECK}>
+        PICOCALC_DOOM_DIRTY_ROWS=$<BOOL:${PICOCALC_DOOM_DIRTY_ROWS}>
         PICOCALC_DOOM_COLORMAPS_SRAM=$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>
         PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
         PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
@@ -375,6 +404,8 @@ else()
         # The demo's name kept past D_DoomMain() (picocalc/dg_picocalc.c).
         -Wl,--wrap=G_DeferedPlayDemo
         -Wl,--wrap=G_TimeDemo
+        # Each level's load, logged for the soak (picocalc/dg_picocalc.c, M9).
+        -Wl,--wrap=P_SetupLevel
         # A save directory for each game (picocalc/doom_files.c, §10.2).
         -Wl,--wrap=M_GetSaveGameDir
         # A save's write, timed (picocalc/doom_files.c, M8).
@@ -388,7 +419,10 @@ else()
         $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=I_PicoSoundSetMusicGenerator>
         $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=OPL_writeReg>
         $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=OPL_calc_buffer_stereo>
-        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>:-Wl,--wrap=I_InitGraphics>
+        $<$<NOT:$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},A>>:-Wl,--wrap=I_InitGraphics>
+        # Strategy C's waits for the copy (picocalc/video_shim.c, §7.3).
+        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>:-Wl,--wrap=S_UpdateSounds>
+        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>:-Wl,--wrap=wipe_ScreenWipe>
         $<$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>:-Wl,--wrap=R_Init>
     )
 

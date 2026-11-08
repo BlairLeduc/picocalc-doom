@@ -458,6 +458,16 @@ So both readings of "320×200 (240?)" hold: in play the 240-row frame is
 centred, and outside a level the 200-row screen inside it is centred too.
 Pixels are 1:1; nothing is scaled (EL §5.4).
 
+**The smaller screen sizes** (3–9, Doom's `-` key) put a border round the
+view, drawn by `R_FillBackScreen()` into a 208-row buffer in the zone.
+Upstream moves every patch at y ≥ 168 down 40 rows for the status bar,
+and did it in that buffer too: at sizes 8 and 9 the border's bottom edge
+went past the buffer's end, over the next zone block, and once M8 kept
+the size in `default.cfg` every `-timedemo` stopped with "Z_Free: freed a
+pointer without ZONEID" (found in M9). The patch moves patches on the
+screen only (`v_video.c`); `test_engine_screens` plays demo 1 at every
+size with the zone checked after each frame.
+
 ### 7.2 The frame pool
 
 HDMI scans one buffer for ever and never falls behind; a presenter on the
@@ -501,10 +511,11 @@ Upstream draws into the zone, so PSRAM, and copies PSRAM to PSRAM.
 |---|---:|---:|---|
 | A. Upstream: `I_VideoBuffer` in the zone, CPU copy to the pool | **9.7 ms** copy, measured (M3, M5), and the renderer's column writes through the XIP cache | 0 | `-timedemo demo1` **28.0 fps** (M5) |
 | B. `I_VideoBuffer` in SRAM, CPU copy to the pool through the cached window | **6.1 ms** copy, measured (M5) | 76,800 | `-timedemo demo1` **44.2 fps** (M5). A shim, not a patch: `I_InitGraphics()` wrapped, `I_VideoBuffer` repointed after it |
-| C. As B, the copy by DMA to the pool through the uncached alias | ~0, plus a wait at the start of the next render | 76,800 | Overlaps the copy with the next tic's game logic; patches `I_FinishUpdate()`. Under B the copy is still a quarter of core 0 (M5's profile) |
+| C. As B, the copy by DMA to the pool through the uncached alias | **0.11 ms** to start it, measured (M9), and waits for it of 3–12 ms a second in all | 76,800 | `-timedemo demo1` **57.2 fps** against B's 44.5 in the same sitting, at screen size 9 (M9); 55.7 at 10 with the drawers in SRAM. A shim, not a patch: `I_FinishUpdate()`'s wrap replaces upstream's |
 
 **Start with A**, which needs no patch, to get pictures in M3; **measure B
-in M5**, where it is the first lever of the gate; C is an M9 lever. The
+in M5**, where it is the first lever of the gate; C is an M9 lever, and
+**M9 kept it**, the default since. The
 choice is a build switch (`PICOCALC_DOOM_VIDEO_BUF`), so each is a control
 for the others (EL §12). B and C fit only with the WAD directory moved to
 PSRAM (§12.1). **M5 kept B**, the default since: it alone passes the gate
@@ -517,6 +528,24 @@ uncached alias into an SRAM row a row ahead, which cost core 0 least
 (HW §4.7, §9.3). The uncached reads need the writer to clean the buffer's
 lines out of the XIP cache at publish, 0.45–0.69 ms a frame (HW §9.3);
 under C the DMA writes past the cache and needs no clean.
+
+**C as built (M9).** `I_FinishUpdate()`'s wrap does upstream's work
+itself: the palette, the margins (blacked past the cache when the margins
+rule asks), and a DMA of the 240 rows, or Doom's 200 to rows 20–219, from
+the SRAM frame to the pool buffer's uncached alias. The channel's
+interrupt (`DMA_IRQ_0`; the audio has `DMA_IRQ_1`) publishes the buffer
+and claims the next. Core 0 runs the next tic meanwhile, and waits for
+the copy before anything can draw into `I_VideoBuffer`: after
+`S_UpdateSounds()`, the last call before `D_Display()` in
+`doomgeneric_Tick()`; before each step of the screen wipe, whose loop
+draws and finishes frames inside `D_Display()`; and at the next
+`I_FinishUpdate()`. Nothing in `TryRunTics()` draws (`I_BeginRead()` is
+empty: no disk icon). `PICOCALC_DOOM_COPY_CHECK` proves it on the board,
+comparing the pool's frame with Doom's at each wait: 1,708 frames of
+demo 1, none different. The copy takes 4.4–4.7 ms a frame by DMA (the
+longest 6.4), against 6.2 ms of core 0's under B; core 1's present rose
+from 21.3 to 22.8 ms under `-timedemo`, the two sharing the QMI, and at
+real speed both present 37.5 frames a second.
 
 ### 7.4 The presenter
 
@@ -533,6 +562,19 @@ present and the keyboard, and little else.**
 Doom redraws the whole 3D view each frame, so presenting only changed rows
 saves little in play; the status bar and borders are what stay still.
 Dirty rows are an M9 lever, measured, not a plan.
+
+**Dirty rows, as kept (M9).** Doom draws about 70 frames a second at 35
+tics, so half the frames it publishes repeat the last, and a present spent
+20 ms sending one, behind which the next tic's frame waited. The presenter
+now takes each row's CRC-32 from the DMA sniffer as it reads the row out
+of the PSRAM (no CPU cost) and sends only rows whose CRC or palette differ
+from the frame last presented, opening a new window at each run of changed
+rows (`PICOCALC_DOOM_DIRTY_ROWS`, on). The 960-byte table lives in `.data`,
+in the gap before `.bss` (§12.1), and anything that draws over the frame's
+rows (a page) makes the next frame send every row. Turning in E1M1: 98 rows
+a frame of 240, a present 10.0 ms on average against 20.4, with no late
+halves or underruns. A CRC-32 collision would leave one stale row until it
+changes again: about once in 4×10⁹ changed rows.
 
 **Tearing.** There is no TE line (HW §1.2), and a fast turn will show a
 tear. Accepted, as on most PicoCalc games (HW §4.9).
@@ -699,6 +741,18 @@ frames. The levers, each against the last:
 | Upstream's Thumb renderer (`EMU8950_ASM`) | 37.3 | 21–25 % | no faster, and 656 B off core 0's stack; dropped |
 | Vanilla's tic wait in `TryRunTics` | (n/a) | 19 % | turns repeat frames to sleep; the dips stayed; dropped |
 | **The OPL rendered on core 1** (§8.4) | see §16 M6 | **4–5 %** | kept |
+
+**M9, with the OPL on core 1.** `MIX_SRAM` off would give the heap
+24.6 KB (8.6 to 33.2 KB), but EMU8950 from flash took 46.6 % of core 1
+against 23.7 %, and its slots came late (6 late halves in a minute of
+turning, none with it on): kept. The effects mixer alone costs core 0 no
+more from flash, but is 1.5 KB of the 21 KB. The mix ring's size is now a
+build setting (`PICOCALC_DOOM_MIX_RING`, a one-line hunk): 3 slots (86 ms
+of effect latency) or 2 (57 ms) give the heap 5.7 or 11.4 KB, but under
+`-timedemo demo1`, which reads lumps as it meets them, they underran 1
+and 3 slots after the level's start where 4 underran none, and a save's
+59–85 ms write would underrun either. Upstream's 4 stays: the owner heard
+no problem with it (2026-11-08).
 
 `PICOCALC_DOOM_MIX_SRAM`, on by default, puts the effects mixer
 (`I_Pico_UpdateSound`) and EMU8950's renderer (all of `slot_render.cpp`,
@@ -1141,6 +1195,17 @@ and pages reached 724 bytes.
 
 CI prints `arm-none-eabi-size` on every build (EL §2.1); M0 records the
 port's real figures against these.
+
+**The gap before `.bss`** (M9). The PWM ring is 8 KB and aligned to its
+size for the DMA's ring wrap (§8.2), so `.bss` starts on an 8 KB boundary
+and the bytes between the end of `.data` and it belong to nothing (HW
+§2.3). Code and tables put in SRAM by section (`.time_critical.*`,
+`.data.*`) fill it without taking heap: the drawers (1.8 KB) and dirty
+rows' table (960 B) went there in M9, and `.data` now ends at
+`0x20017294`, 3,436 bytes short of the boundary. Past it, `.bss` and the
+heap's start move up 8 KB at once, so anything further put in SRAM is
+checked against `__data_end__` first. The heap, as built in M9: **8,608 B**
+in the development build (play used 4,512), 12,756 in the release.
 
 ### 12.2 PSRAM (8 MB)
 
@@ -1606,7 +1671,8 @@ before any other milestone:
    callers with `nm`). No patch: before the link, `cmake/sram_sections.cmake`
    renames their sections in `r_draw.c`'s and `r_things.c`'s objects to
    the SDK's `.time_critical.*`, which its linker script puts in SRAM
-   (`PICOCALC_DOOM_DRAWERS_SRAM`).
+   (`PICOCALC_DOOM_DRAWERS_SRAM`). On by default since M9: under C,
+   +3 % on demo 1 and +5 % on demo 4, in the gap before `.bss`.
 4. The copy by DMA (§7.3, strategy C).
 
 Only if those fall short does the owner decide on a higher clock (D7).
@@ -1683,6 +1749,10 @@ published rising in every heartbeat, and the tic count with them.
 
 **Done when** the soak passes and every lever is recorded as kept or
 dropped with its number.
+(Met 2026-11-08: the soak passed on battery at screen size 10. Kept:
+strategy C, the drawers in SRAM, dirty rows, the mixer in SRAM; the mix
+ring left at 4, the owner content by ear; demos 1–4 at 55.7, 59.8, 63.2 and 40.9 fps
+with audio at screen size 10; `milestones.md`.)
 
 ### M10: Release
 
@@ -1710,7 +1780,7 @@ milestone named.
 
 | Constant | Value | Source | Confidence | Settled in |
 |---|---|---|---|---|
-| Stable at 300 MHz, 1.20 V, under Doom | yes | HW §3; Quest's soak (other workload) | medium | M5, M9 soak |
+| Stable at 300 MHz, 1.20 V, under Doom | yes | M9's 30-minute soak: one boot, no fault, 23–25 °C | confirmed | Confirmed 2026-11-07, M9 (the release soak in M10) |
 | PSRAM at 100 MHz (divider 3) at 300 MHz | works | the round trip on a Plus 2 W and a Plus 2 (HW §2.4) | confirmed | Confirmed 2026-11-06, M1 |
 | LCD SPI at 75 MHz | works | 75,000,000 Hz returned; the test pattern right | confirmed | Confirmed 2026-11-06, M1 |
 | Flash at 75 MHz (divider 4, RX delay 4) | works | HW §3's sweep, Quest M8; M1 ran on both boards, for minutes | confirmed | Confirmed 2026-11-06, M1; the soak in M9 |

@@ -4,6 +4,151 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M9: performance pass and soak
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
+flashed over SWD with `scripts/flash.sh`; development builds, Arm GCC
+15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V; UART0 captured. The card
+held the original 1.9 IWADs, M7's `picocalc.ini` (`iwad = doom.wad`,
+`args = -skill 4`) and the `default.cfg` M8's persistence check left at
+screen size 9 (Found). The levers were measured at 9, each against its
+control at 9; the soak and the final gate were run again at 10, the
+owner's size, on 2026-11-08 after `=` and F10 `y` put it back. Built, run
+and read by Claude; the owner looked at the panel and listened on
+2026-11-08 (Checks).
+
+### Done when
+
+| Check | Result |
+|---|---|
+| The 30-minute soak passes, on battery | **passed** at screen size 10, 2026-11-08, `scripts/soak.sh 30`, `soak_check.sh`: one boot; 1,905 heartbeats in play, every second; 4,852 keys taken, some in every minute; late refills, I²C errors, log lines dropped, keys lost, OPL late halves and dropped writes **0** throughout; **no underrun**; frames published, the game tic and the level tic rising in every heartbeat; **on battery throughout** (the charging bit clear in every heartbeat, the battery 100 % to 98 %) |
+| The same at screen size 9 | **passed**, 2026-11-07, with the same counts (4,850 keys); battery for the first 1,180 s, then USB |
+| Every lever recorded as kept or dropped with its number | below |
+
+### The levers
+
+Each against the last kept as its control, in one sitting.
+
+| Lever | Control | Measured | Result |
+|---|---|---|---|
+| **Strategy C**, the copy into the pool by DMA (§7.3) | B | `-timedemo` demos 1–4: **57.2, 61.3, 65.6, 41.2** fps against 44.5, 48.0, 50.2, 33.8; demo 1 twice each, the same | **kept**, the default |
+| **The drawers in SRAM** (M5's lever 3) | C | demo 1 57.2 → **58.9**, demo 4 41.2 → **43.1** | **kept**, on; no heap (the gap before `.bss`) |
+| **Dirty rows** in the presenter (§7.4) | C + drawers | turning in E1M1 for 53 s: 98 rows a frame of 240; a present 20.4 → **10.0 ms**; no late halves or underruns | **kept**, on |
+| The mixer and EMU8950 in SRAM (M6) | `MIX_SRAM` off | the OPL 23.7 % of core 1 against 46.6 %, and 6 late halves in 53 s without it; the heap 8.6 against 33.2 KB | **kept** |
+| A smaller mix ring (§8.3) | 4 slots | 3 slots: heap +5.7 KB, effect latency 86 ms, 1 slot underrun in demo 1; 2 slots: +11.4 KB, 57 ms, 3 underruns | **not taken**: 4 stays the default, the owner hearing no problem with it (`PICOCALC_DOOM_MIX_RING`) |
+| More of Doom in the gap | the profile | core 0 under C + drawers, demo 1, 20 s: `R_DrawColumn` 15.9 %, `R_DrawSpan` 9.2 % (both SRAM), then `P_MobjThinker` 6.0 %, `I_Pico_UpdateSound` 5.9 %, `R_RenderSegLoop` 5.5 %, the card's SPI 4.7 %; 61 % in flash. Nothing left worth the SRAM | **not built** |
+
+The gate with every lever kept, audio on, at screen size 10 (2026-11-08,
+against M6's at 10):
+
+| | Demo 1 | Demo 2 | Demo 3 | Demo 4 |
+|---|---:|---:|---:|---:|
+| M6 | 41.6 | 43.8 | 45.8 | 32.1 |
+| **M9** | **55.7** | **59.8** | **63.2** | **40.9** |
+
+Every demo is above 35 again. At screen size 9 the same build gave demo
+1 58.9 and demo 4 43.1.
+
+| Strategy C | B | C |
+|---|---:|---:|
+| Core 0 per frame, copy | 6.18 ms | 0 (0.11 ms to start it) |
+| The copy itself | | 4.4–4.7 ms by DMA, longest 6.4–8.0 |
+| Core 0's waits for it | | 3–38 ms a second in all |
+| Present, core 1, under `-timedemo` | 21.3 ms | 22.8 ms |
+| Standing in E1M1 (150 s): drawn, presented a second | 51.4, 37.6 | 69.8, 37.5 |
+| Core 0 busy, standing | 96.0 % | 87.2 % |
+
+The "standing" runs were meant as Doom's attract loop at real speed, but
+`-skill` in `picocalc.ini` starts a game at once, so they show the player
+still at E1M1's start (Found).
+
+### Checks
+
+| Check | Result |
+|---|---|
+| Demo 1's frame hashes, C, against the host's at screen size 9 | **1,703 the same, 0 different**, 6 skipped as unstable |
+| `PICOCALC_DOOM_COPY_CHECK`: Doom's frame unchanged between the copy's start and core 0's wait | **1,708 frames compared, 0 different** |
+| Host tests | **12 of 12**, with `test_engine_screens` (sizes 8 and 9 failed before the fix) |
+| `check_sources.sh` | passed |
+| The panel and the audio, by the owner, 2026-11-08 | **no problems seen or heard**, with dirty rows on and the mix ring at 4 slots |
+| The soak's check against a control | the menu held open for 10 s: **failed**, on those 10 heartbeats ("level tic did not rise") |
+
+### The soak
+
+`scripts/soak.sh 30`: E1M1 at skill 4 with `iddqd` and `idkfa`, a 12-second
+round of keys (walk, turn, strafe, fire three weapons, use) over the UART
+for 30 minutes.
+
+| | Screen size 10, battery | Screen size 9 |
+|---|---:|---:|
+| Drawn, presented a second | 64.4, 58.9 | 66.2, 64.0 |
+| Rows sent a frame (of 240) | 98.7 | 80.1 |
+| Core 0 busy | 79.3 % | 75.4 % |
+| Die | 21–24 °C | 23–25 °C |
+| Stacks, core 0 and core 1 | 2,032, 1,148 B | 2,016, 1,148 B |
+| The level's load | 662 ms | 661 ms |
+
+The heap's high mark 4,512 of 8,608 B in both. Dirty rows send a
+repeated frame in about 2 ms.
+
+### Found
+
+- **M8's persistence check left the card at screen size 9**: it pressed
+  `-` to prove a change survives, and nothing put it back, so this
+  milestone's lever runs were at 9 until the owner noticed. A test that
+  changes saved state must restore it, and the record name the state
+  each run met (emulator-lessons.md §12).
+- **`-timedemo` had stopped since M8** with "Z_Free: freed a pointer
+  without ZONEID": upstream's `V_DrawPatch()` moves patches at y ≥ 168
+  down 40 rows for the status bar, also inside the view border's 208-row
+  buffer, so at screen sizes 8 and 9 the border went past the buffer into
+  the next zone block. M8's `default.cfg` held size 9. M7's
+  build played; M8's with `-config none.cfg` played; the host engine,
+  given each size and a heap check a frame, failed at 8 and 9. A
+  `v_video.c` hunk moves patches on the screen only (design.md §7.1).
+- **The "attract loop" was a still scene**: `args = -skill 4` makes Doom
+  start a game (emulator-lessons.md §12).
+- **The first dirty-rows build froze the panel**: the sniffer needs its
+  own enable as well as the channel's bit (hardware-notes.md §4.7); the
+  rows-sent figure gave it away.
+- **The 8 KB-aligned PWM ring leaves 4,364 bytes before `.bss`** that
+  nothing used; the drawers and dirty rows' table now sit there
+  (hardware-notes.md §2.3, design.md §12.1).
+- **Opening the probe's port again loses capture bytes**: a key script
+  opened per round lost a heartbeat line and part of another in 3
+  minutes; one opening for the run lost none in 33 (hardware-notes.md
+  §2.7).
+- `host_engine.sh compare`'s awk failed on a capture's reset noise outside
+  the C locale.
+
+**The code**: strategy C and its check in `video_shim.c`; dirty rows in
+`core1.c`; Doom's clocks and state in the heartbeat; the level-load log;
+`scripts/soak.sh`, `soak_check.sh`; `-hostscreenblocks` and
+`-hostcheckzone` in the host engine, `HOST_ARGS` for `host_engine.sh
+hashes`. **The patch** gains two hunks: `v_video.c`'s, and
+`i_picosound.c`'s ring size. Switches: `PICOCALC_DOOM_VIDEO_BUF` (C),
+`PICOCALC_DOOM_COPY_CHECK` (off), `PICOCALC_DOOM_DRAWERS_SRAM` (on),
+`PICOCALC_DOOM_DIRTY_ROWS` (on), `PICOCALC_DOOM_MIX_RING` (4).
+
+### Sizes
+
+| | M8, development | M9, development | M9, release |
+|---|---:|---:|---:|
+| `.text` | 306,892 | 305,828 | 279,652 |
+| `.rodata` | 144,932 | 145,188 | 136,556 |
+| `.data` | 91,836 | 94,596 | 94,572 |
+| `.bss` | 417,308 | 417,376 | 413,228 |
+| SRAM left for the heap | 8,676 | **8,608** | 12,756 |
+
+### Not checked
+
+- The levers each against its control at screen size 10 (measured at 9;
+  the final build's gate and soak at 10).
+- The release build on the device, and the Plus 2 (M10).
+- Demos 2 and 3 with the drawers; Doom II, Plutonia, TNT under `-timedemo`.
+- The keys through the southbridge in a soak (UART keys bypass it; M10's
+  release soak).
+
 ## M8: saves, configuration, exit, time, arguments
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,

@@ -30,6 +30,11 @@
  *                     (scripts/host_engine.sh)
  *   -hostclock        a virtual clock: time passes only when Doom sleeps,
  *                     so -hosttics runs as fast as the host can draw
+ *   -hostscreenblocks N  play at Doom's screen size N (3-11; the
+ *                     configuration file is not read here, so 10 otherwise)
+ *   -hostcheckzone    check the zone's every block header after each frame
+ *                     (Z_CheckHeap), so a write past a block's end stops the
+ *                     run with Doom's error where it happened
  *   -hostshot TIC FILE  write the last frame drawn at game tic TIC to FILE,
  *                     a PPM, to look at; -1 for the last frame of the run.
  *                     A FILE ending in .raw gets the 320 x 240 palette
@@ -85,6 +90,7 @@ static uint32_t virtual_ms;
 /* The zone, sampled each frame, and the WAD's reads, counted. */
 static int zone_size;
 static int zone_pad;                /* -hostzonepad */
+static int check_zone;              /* -hostcheckzone */
 static int zone_fill;               /* -hostzonefill */
 static int zone_low_free = -1;      /* least free or purgeable, bytes */
 static unsigned long reads, read_bytes;             /* all of them */
@@ -247,6 +253,7 @@ int main(int argc, char **argv)
         run_tics = atoi(argv[i + 1]);
     }
     virtual_clock = M_CheckParm("-hostclock") != 0;
+    check_zone = M_CheckParm("-hostcheckzone") != 0;
     i = M_CheckParmWithArgs("-hostshot", 2);
     if (i) {
         shot_tic = atoi(argv[i + 1]);
@@ -259,8 +266,15 @@ int main(int argc, char **argv)
     }
 }
 
+extern int screenblocks;
+
 void DG_Init(void)
 {
+    /* Before D_DoomMain(), where Doom reads the size it will play at. */
+    int i = M_CheckParmWithArgs("-hostscreenblocks", 1);
+    if (i) {
+        screenblocks = atoi(myargv[i + 1]);
+    }
     DG_ScreenBuffer = calloc(DOOMGENERIC_RESX * DOOMGENERIC_RESY, sizeof(pixel_t));
     if (DG_ScreenBuffer == NULL) {
         fprintf(stderr, "host: out of memory\n");
@@ -271,6 +285,9 @@ void DG_Init(void)
 void DG_DrawFrame(void)
 {
     palette_changed = false;
+    if (check_zone) {
+        Z_CheckHeap();
+    }
     sample_zone();
     if (gamestate == GS_LEVEL) {
         in_play = 1;

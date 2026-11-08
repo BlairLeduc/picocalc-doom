@@ -9,7 +9,11 @@
 #                                           (2100, a minute) at skill 4, and
 #                                           report the zone and the cache
 #   scripts/host_engine.sh hashes [OUT]     the frame-hash list of doom.wad's
-#                                           demo1, the device's reference
+#                                           demo1, the device's reference;
+#                                           HOST_ARGS adds to the engine's
+#                                           arguments (-hostscreenblocks 9
+#                                           for a card whose default.cfg
+#                                           has screen size 9)
 #   scripts/host_engine.sh compare FILE [REF]  a device's list against the
 #                                           reference; FILE is a list, or a
 #                                           UART capture from a build with
@@ -142,7 +146,7 @@ cmd_hashes() {
         offset=${offsets[$i]}
         "$doom" -iwad "$wads/doom.wad" -timedemo demo1 \
             -hostzonefill "$fill" -hostzoneoffset "$offset" -hostzonepad 128 \
-            -hosthashes "$out/hashes/run$i.crc" > "$out/hashes/run$i.log" 2>&1 ||
+            -hosthashes "$out/hashes/run$i.crc" ${HOST_ARGS:-} > "$out/hashes/run$i.log" 2>&1 ||
             die "demo1 failed; see $out/hashes/run$i.log"
     done
     local md5
@@ -153,7 +157,7 @@ cmd_hashes() {
         echo "# pixels then palette (picocalc/frame_hash.h). \"-\": the frame read"
         echo "# memory Doom never wrote, or past a zone block's end, and differs"
         echo "# from run to run."
-        echo "# doom.wad $md5, made by scripts/host_engine.sh hashes."
+        echo "# doom.wad $md5, made by scripts/host_engine.sh hashes${HOST_ARGS:+ with $HOST_ARGS}."
         paste "$out/hashes/run0.crc" "$out/hashes/run1.crc" \
               "$out/hashes/run2.crc" "$out/hashes/run3.crc" |
             awk '{ same = ($2 == $4 && $2 == $6 && $2 == $8) &&
@@ -166,7 +170,7 @@ cmd_hashes() {
 cmd_compare() {
     local file="${1:-}" ref="${2:-$ref_default}"
     [ -n "$file" ] || die "compare needs the device's list"
-    LC_ALL=C tr -d '\r' < "$file" | awk -v ref="$ref" '
+    LC_ALL=C tr -d '\r' < "$file" | LC_ALL=C awk -v ref="$ref" '
         BEGIN {
             while ((getline line < ref) > 0) {
                 if (line ~ /^#/) continue

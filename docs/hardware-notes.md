@@ -219,6 +219,19 @@ synchronize writes to the panel's scan.
 Keep fixed capacities in one header rather than scattered `#define`s; you will
 be trading them against each other repeatedly.
 
+**A large alignment in `.bss` leaves a hole before it.** An audio ring
+that the DMA wraps with its ring-size field must be aligned to its own
+size, and an 8 KB ring raises the whole `.bss` output section's
+alignment to 8 KB, so `.bss` starts at the next 8 KB boundary after
+`.data` and the bytes between belong to nothing. Read from the ELF
+(`arm-none-eabi-nm`, `objdump -h`) of a Pico SDK 2.3.1 RP2350 build,
+2026-11-07: `.data` ended at `0x20016ef4` and `.bss` began at
+`0x20018000`, 4,364 bytes unused. Code or initialised data moved into
+SRAM (`.time_critical.*`, `.data.*` sections) fills the hole without
+taking anything from the heap, until `.data` crosses the boundary and
+`.bss`, with the heap's start, jumps 8 KB at once. Check where `.data`
+ends whenever SRAM code is added.
+
 **Core 0's default stack is small, and core 1's is right under it.** Read
 from the Pico SDK 2.3.1 RP2350 default linker script, 2026-11-06: core 0's
 stack starts at the top of SCRATCH_Y (4 KB at `0x20081000`) and grows down;
@@ -283,6 +296,24 @@ memory-mapped window. Do not assume a generic `pico2` build enables it. Three th
   out of the XIP cache afterwards with `xip_cache_clean_range`, with a
   512-byte copy beside it, took **0.44–0.47 ms** on average, the longest
   1.55 ms.
+
+**A DMA copy from SRAM into PSRAM's uncached alias** takes the copy off
+the CPU. Measured on a Pimoroni Pico Plus 2 W at 300 MHz with the PSRAM at
+100 MHz, 2026-11-07, development build, Arm GCC 15.2.Rel1: a game's
+finished 320×240 8-bit frame (76,800 bytes) copied from SRAM to a buffer
+at `0x15xxxxxx` by one DMA channel, 32-bit transfers, both addresses
+incrementing, default priority, while core 0 ran the game's next tic from
+flash and core 1 read finished frames out of the PSRAM by DMA from the
+same alias: **4.4–4.7 ms** a copy on average, the longest 6.4–8.0 ms
+(about 17 MB/s), against 6.1–6.2 ms of CPU time for the same copy through
+the cached window followed by a clean. The DMA writes past the XIP cache,
+so no clean is needed, but the writer must never have the buffer's lines
+in the cache (clean and invalidate them once, then touch the buffer only
+through the uncached alias). The other core's DMA reads of the PSRAM
+slowed: a 320×240 frame read row by row and sent to the LCD took 22.8 ms
+on average against 21.3 ms with the copy on the CPU, with frames
+finished at 57 and 45 a second. The game, `-timedemo` with its copy
+overlapped with the next tic: 44.5 to 57.2 frames a second.
 
 Use PSRAM for **capacity** (level data, sprite banks, audio samples, a text
 buffer) and SRAM for the **per-frame working set**.
@@ -498,6 +529,15 @@ from the capture while the firmware's log ring dropped none. Setting it
 up only when no other program holds it, the next two 30-minute runs lost
 none.
 
+Opening the port again, without setting it up, can lose bytes too.
+**Seen** on a Pimoroni Pico Plus 2 W on macOS, 2026-11-07, a capture
+holding the port: a key-typing script that opened the port afresh for
+each 12-second round of keys, 15 openings in 3 minutes, left one heartbeat
+line missing from the capture and another missing 70 characters in its
+middle, while the firmware's log ring dropped none. The same keys typed
+by one process that opened the port once, for 3 minutes and then for 30,
+lost nothing. Open the writer once for a whole run.
+
 **The chip's reset record outlives a debugger reset.** POWMAN's
 `CHIP_RESET` names the last reset of the whole chip, and OpenOCD's
 resets only the cores, so after a flash it still names the last
@@ -670,6 +710,20 @@ timing is set again by the bootrom, but the voltage is not. So a firmware
 that ever raises the rail must set it at 150 MHz too, after the clock.
 Found on a Plus 2 W on 2026-09-27 by reading `vreg_get_voltage()` in the
 banner.
+
+**300 MHz at 1.20 V held for 30 minutes of a game with audio, on
+battery.** Measured on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a
+PicoCalc, 2026-11-08, development build, Arm GCC 15.2.Rel1, PSRAM at
+100 MHz, flash at 75 MHz, LCD SPI at 75 MHz: a Chocolate Doom engine
+played one level with keys typed over the UART for 1,905 s, core 0 79 %
+busy drawing 64 frames a second, core 1 sending the changed rows of each
+(99 of 240 on average) and rendering OPL music, PWM audio at 49.7 kHz,
+DMA copying each frame into PSRAM. One boot, no fault, no late audio
+refill, no I²C error; the die read 21–24 °C throughout. Power: the
+batteries throughout (the southbridge's charging bit clear in every
+reading), 100 % to 98 % as the southbridge reports it. A run the day
+before with a slightly smaller picture (core 0 75 % busy) gave the same,
+23–25 °C, on battery for 1,180 s and USB after.
 
 ---
 
@@ -888,6 +942,24 @@ A battery-powered 30-minute combined display/audio/input run on the Plus 2 W
 recorded 1,800 heartbeats, all eight scripted physical key events, zero I2C
 errors and zero late audio refills; the operator reported no display corruption
 or audio interruptions. Panel revision identifiers were not recorded.
+
+**Rows that did not change, found for nothing by the DMA sniffer.** A
+presenter that reads each row of an indexed frame from PSRAM into SRAM by
+DMA can have the DMA's sniffer take the row's CRC-32 on the way, at no
+CPU cost: seed `sniff_data` before each row's transfer, read it when the
+transfer is done, and skip the row on the panel when its CRC and the
+palette match the frame last sent, ending the RAM write before a run of
+skipped rows and opening a new window (CASET, RASET, RAMWR) at the next
+changed one. Both switches are needed: the channel's `SNIFF_EN` in its
+control word **and** the sniffer's own enable with the channel's number
+(`dma_sniffer_enable`); with only the first, `sniff_data` keeps its seed,
+every row matches, and the panel silently freezes on its first frame
+(found 2026-11-07, the first build). Measured on a Pimoroni Pico Plus 2 W
+at 300 MHz, the LCD at 75 MHz, 2026-11-07, development build: a game
+turning on the spot, frames finished about 70 a second at 35 game tics a
+second, sent **98 rows a frame of 240** on average (a repeated frame
+sends none; a new one most of its 3D view), and a present took **10.0
+ms** on average against 20.4 ms sending every row.
 
 ### 4.8 Hardware vertical scroll
 

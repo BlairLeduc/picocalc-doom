@@ -38,6 +38,9 @@ volatile uint32_t g_core0_sleep_us;
 volatile uint32_t g_core0_frames;
 volatile uint32_t g_core0_stack;
 volatile uint32_t g_core0_heap;
+volatile uint32_t g_core0_tic;
+volatile uint32_t g_core0_leveltime;
+volatile uint32_t g_core0_gamestate;
 
 #define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 
@@ -88,7 +91,33 @@ typedef struct {
     uint32_t last_us;    /* the last present, wall time   */
     uint32_t max_us;     /* the longest since boot        */
     uint32_t sum_us;     /* all presents, since boot      */
+    uint32_t rows;       /* rows sent to the LCD, since boot */
 } present_stats_t;
+
+#ifndef PICOCALC_DOOM_DIRTY_ROWS
+#define PICOCALC_DOOM_DIRTY_ROWS 0
+#endif
+
+#if PICOCALC_DOOM_DIRTY_ROWS
+/* Dirty rows (§7.4, M9): each row's CRC-32, taken by the DMA sniffer as
+ * the row comes out of the PSRAM, and the palette's hash, for the frame
+ * last presented. A row whose CRC and palette are unchanged is already on
+ * the panel and is not sent again. In .data, not .bss: the audio's
+ * 8 KB-aligned ring starts .bss on an 8 KB boundary, and the gap before
+ * it holds this for nothing off the heap. */
+static uint32_t s_row_crc[FRAME_H] __attribute__((section(".data.picocalc_dirty_rows")));
+static uint32_t s_row_pal;
+/* Cleared when something else has drawn over the frame's rows (a page),
+ * and before the first frame: every row is sent. */
+static bool s_rows_valid;
+
+static uint32_t palette_hash(const uint16_t *pal) {
+    const uint32_t *w = (const uint32_t *)pal;
+    uint32_t h = 2166136261u;
+    for (unsigned i = 0; i < 128u; i++) h = (h ^ w[i]) * 16777619u;
+    return h;
+}
+#endif
 
 static present_stats_t s_present;
 static uint16_t s_line[2][FRAME_W];
@@ -103,6 +132,10 @@ static void row_dma_start(const uint8_t *src, unsigned slot) {
     channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
     channel_config_set_read_increment(&c, true);
     channel_config_set_write_increment(&c, true);
+#if PICOCALC_DOOM_DIRTY_ROWS
+    channel_config_set_sniff_enable(&c, true);
+    dma_sniffer_set_data_accumulator(0xffffffffu);
+#endif
     dma_channel_configure((unsigned)s_row_dma, &c, s_idx[slot], src, FRAME_W / 4u, true);
 }
 
@@ -117,11 +150,42 @@ static void present(int i) {
     const uint16_t *pal = video_palette(i);
     uint32_t t0 = time_us_32();
 
+#if PICOCALC_DOOM_DIRTY_ROWS
+    uint32_t pal_hash = palette_hash(pal);
+    bool valid = s_rows_valid && pal_hash == s_row_pal;
+    s_row_pal = pal_hash;
+    s_rows_valid = true;
+    bool open = false;
+#else
     lcd_blit_begin(0, FRAME_Y, FRAME_W, FRAME_H);
+#endif
+    uint32_t rows = 0;
     row_dma_start(px, 0);
     for (unsigned row = 0; row < FRAME_H; row++) {
         dma_channel_wait_for_finish_blocking((unsigned)s_row_dma);
+#if PICOCALC_DOOM_DIRTY_ROWS
+        uint32_t crc = dma_sniffer_get_data_accumulator();
+#endif
         if (row + 1u < FRAME_H) row_dma_start(px + (row + 1u) * FRAME_W, (row + 1u) & 1u);
+#if PICOCALC_DOOM_DIRTY_ROWS
+        bool dirty = !valid || crc != s_row_crc[row];
+        s_row_crc[row] = crc;
+        if (!dirty) {
+            /* A run of rows already on the panel ends the RAM write; the
+             * next changed row opens another at its own row. */
+            if (open) {
+                lcd_blit_end();
+                open = false;
+            }
+            if (row % PUMP_ROWS == PUMP_ROWS - 1u) log_pump();
+            continue;
+        }
+        if (!open) {
+            lcd_blit_begin(0, FRAME_Y + row, FRAME_W, FRAME_H - row);
+            open = true;
+        }
+#endif
+        rows++;
         uint16_t *line = s_line[row & 1u];
         frame_expand_row((const uint8_t *)s_idx[row & 1u], pal, line, FRAME_W);
         lcd_blit_row(line, FRAME_W);
@@ -132,7 +196,12 @@ static void present(int i) {
 #endif
         if (row % PUMP_ROWS == PUMP_ROWS - 1u) log_pump();
     }
+#if PICOCALC_DOOM_DIRTY_ROWS
+    if (open) lcd_blit_end();
+#else
     lcd_blit_end();
+#endif
+    s_present.rows += rows;
 
     uint32_t us = time_us_32() - t0;
     s_present.presents++;
@@ -262,6 +331,11 @@ void core1_main(void) {
 
     board_temp_init();
     s_row_dma = dma_claim_unused_channel(true);
+#if PICOCALC_DOOM_DIRTY_ROWS
+    /* The sniffer watches this channel alone; each row's transfer turns
+     * it on in its config (row_dma_start). */
+    dma_sniffer_enable((unsigned)s_row_dma, DMA_SNIFF_CTRL_CALC_VALUE_CRC32, false);
+#endif
 
     __dmb();
     g_core1.ready = true;
@@ -332,6 +406,10 @@ void core1_main(void) {
                 lcd_fill(0, 0, LCD_PANEL_W, FRAME_Y, 0);
                 lcd_fill(0, FRAME_Y + FRAME_H, LCD_PANEL_W, LCD_PANEL_H - FRAME_Y - FRAME_H, 0);
                 bands_cleared = true;
+#if PICOCALC_DOOM_DIRTY_ROWS
+                /* A page, or the test pattern, covered the frame's rows. */
+                s_rows_valid = false;
+#endif
             }
             present(frame);
             video_release(frame);
@@ -384,7 +462,7 @@ void core1_main(void) {
                    "dropped %lu; copy %lu us (max %lu), publish %lu us (max %lu), "
                    "present %lu us (max %lu), margins %lu; stacks: core 0 %lu of %lu B, "
                    "core 1 %lu of %lu B; heap %lu of %lu B; temp %d C, battery %d%%%s, i2c errors %lu, "
-                   "log dropped %lu, core 1 loops %lu\n",
+                   "log dropped %lu, core 1 loops %lu; game tic %lu, level tic %lu, state %lu\n",
                    (unsigned long)seconds, (unsigned long)(busy / 10u),
                    (unsigned long)(busy % 10u), (unsigned long)(frames - last_frames),
                    (unsigned long)(pub - last_pub), (unsigned long)n_pres,
@@ -401,7 +479,29 @@ void core1_main(void) {
                    temp_c, battery < 0 ? -1 : battery & 0x7f,
                    battery >= 0 && (battery & 0x80) ? " charging" : "",
                    (unsigned long)sb_error_count(), (unsigned long)log_dropped(),
-                   (unsigned long)loops);
+                   (unsigned long)loops, (unsigned long)g_core0_tic,
+                   (unsigned long)g_core0_leveltime, (unsigned long)g_core0_gamestate);
+#if PICOCALC_DOOM_DIRTY_ROWS
+            /* Dirty rows' line (M9, §7.4): rows sent to the LCD a frame
+             * presented, of 240. */
+            printf("hb %lu present: rows %lu a frame\n", (unsigned long)seconds,
+                   (unsigned long)(n_pres ? (ps.rows - last_present.rows) / n_pres : 0));
+#endif
+#if PICOCALC_DOOM_VIDEO_BUF_C
+            /* Strategy C's line (M9, §7.3): the copy by DMA, a frame's
+             * worth on average and the longest; core 0's waits for it, the
+             * second's and their time; and a check build's frames compared
+             * and differing, since boot. */
+            uint32_t n_wait = v.waits - last_video.waits;
+            printf("hb %lu copy: dma %lu us (max %lu), waits %lu, %lu us (max %lu), "
+                   "checked %lu, differing %lu\n",
+                   (unsigned long)seconds,
+                   (unsigned long)(n_fin ? (v.dma_us - last_video.dma_us) / n_fin : 0),
+                   (unsigned long)v.dma_max_us, (unsigned long)n_wait,
+                   (unsigned long)(v.wait_us - last_video.wait_us),
+                   (unsigned long)v.wait_max_us, (unsigned long)v.checked,
+                   (unsigned long)v.check_failed);
+#endif
             /* The keyboard's line (M4): pairs read and taken, their wait in
              * the ring, a press to the first frame after Doom took it,
              * releases I_GetEvent() left to the next tic (§9.1), and the

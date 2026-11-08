@@ -7,12 +7,14 @@
  * publishes it with its palette and claims the next (video_shim.c).
  * Core 1 reaches it through the calls below.
  *
- * §7.3's strategy B by default (M5): Doom draws into an SRAM buffer
- * (PICOCALC_DOOM_VIDEO_BUF), and upstream's copy, unchanged, moves it
- * into the pool; A, the zone's buffer in the PSRAM, is the control.
- * Core 1 reads a frame by DMA from the PSRAM's uncached alias into an
- * SRAM row, a row ahead (hardware-notes.md §4.7, §9.3), so core 0 cleans
- * the buffer's lines out of the XIP cache at publish.
+ * §7.3's strategy C by default (M9): Doom draws into an SRAM buffer
+ * (PICOCALC_DOOM_VIDEO_BUF) and a DMA copies it into the pool past the
+ * XIP cache while core 0 runs the next tic. B, the controls' first, has
+ * upstream's copy, unchanged, move it through the cache; A draws into the
+ * zone's buffer in the PSRAM. Core 1 reads a frame by DMA from the
+ * PSRAM's uncached alias into an SRAM row, a row ahead
+ * (hardware-notes.md §4.7, §9.3), so under A and B core 0 cleans the
+ * buffer's lines out of the XIP cache at publish.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -53,6 +55,15 @@ typedef struct {
     volatile uint32_t publish_us;    /* DG_DrawFrame, summed since boot    */
     volatile uint32_t publish_max_us;
     volatile uint32_t margins;       /* buffers whose margins were blacked */
+    /* Strategy C (M9): the copy by DMA, start to the interrupt; core 0's
+     * waits for it; and, in a check build, frames compared and differing. */
+    volatile uint32_t dma_us;
+    volatile uint32_t dma_max_us;
+    volatile uint32_t waits;
+    volatile uint32_t wait_us;
+    volatile uint32_t wait_max_us;
+    volatile uint32_t checked;
+    volatile uint32_t check_failed;
 } video_stats_t;
 
 extern video_stats_t g_video;

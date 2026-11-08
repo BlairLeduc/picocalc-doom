@@ -381,6 +381,22 @@ void __wrap_G_TimeDemo(char *name)
     __real_G_TimeDemo(keep_demo_name(name));
 }
 
+/* Each level's load, logged with its time (M9): the soak's check allows
+ * the audio to underrun only just after one (§8.3: a level load stalls
+ * the game loop for longer than the mix ring). P_SetupLevel() is called
+ * from g_game.c only, so it can be wrapped at link time. */
+void __real_P_SetupLevel(int episode, int map, int playermask, skill_t skill);
+
+void __wrap_P_SetupLevel(int episode, int map, int playermask, skill_t skill)
+{
+    uint32_t t0 = time_us_32();
+    __real_P_SetupLevel(episode, map, playermask, skill);
+    uint32_t ms = (time_us_32() - t0) / 1000u;
+    FRANK_DOOM_LOG("level: episode %d map %d loaded in %lu ms\n", episode, map,
+                   (unsigned long)ms);
+    (void)ms;
+}
+
 /* Core 0's idle time, for the heartbeat's busy share (§14.3). Upstream
  * mixes once a frame, from S_UpdateSounds(), but its screen wipe draws a
  * second of frames without it, and the ring ran dry at every level's
