@@ -1503,6 +1503,15 @@ really goes round, on the host, before the device:
   really makes a directory stops the program. It hides until a card lacks
   the directory: test with the directories the program makes absent.
   Wrap the library's allocator so a request that cannot fit gets NULL.
+- **Once a setting lasts, test every value of it.** A fork's latent bug
+  can hide behind a default that nobody changes for long. Doom's screen
+  sizes 8 and 9 drew the view's border past its buffer into the next zone
+  block (the fork moves every patch below row 168 down 40 rows for its
+  taller status bar, in any buffer); with the size forgotten at every boot
+  nobody played long at them, but once `default.cfg` kept the owner's
+  size 9, every `-timedemo` on the board stopped with a zone error. A host
+  run of each value with the heap checked after every frame (Doom's
+  `Z_CheckHeap`) failed at 8 and 9 at once.
 
 ## 9. Timing and clocks
 
@@ -1941,6 +1950,19 @@ emulator specifically:
 - **A release build with no UART still has figures.** Copy the counters once
   a second into one block at a fixed symbol and read it over SWD without
   halting (HW §2.7).
+- **Check that the workload is the one you meant before comparing builds
+  on it.** Doom's attract loop was to be the real-speed test, but the
+  settings file added `-skill 4`, which makes Doom start a game at once:
+  four "attract" comparisons were of the player standing still at E1M1's
+  start. Only a lever that depends on the picture changing (dirty rows,
+  which sent nothing) gave it away. Look for a sign in the log that the
+  scene moves (rows changed, tics of play) in each run that is compared.
+- **A lever that skips work needs a control that proves the work is still
+  done.** The first dirty-rows build sent 12 rows a frame of 240 and
+  presented ten times faster, because the CRC it skipped by never changed:
+  the panel was frozen on its first frame. The per-second row counts in
+  the heartbeat, against a scene known to move, showed it; the frame rate
+  alone looked like a win.
 
 ---
 

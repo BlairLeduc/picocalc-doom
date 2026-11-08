@@ -391,8 +391,10 @@ void __wrap_P_SetupLevel(int episode, int map, int playermask, skill_t skill)
 {
     uint32_t t0 = time_us_32();
     __real_P_SetupLevel(episode, map, playermask, skill);
+    uint32_t ms = (time_us_32() - t0) / 1000u;
     FRANK_DOOM_LOG("level: episode %d map %d loaded in %lu ms\n", episode, map,
-                   (unsigned long)((time_us_32() - t0) / 1000u));
+                   (unsigned long)ms);
+    (void)ms;
 }
 
 /* Core 0's idle time, for the heartbeat's busy share (§14.3). Upstream

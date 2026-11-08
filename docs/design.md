@@ -563,6 +563,19 @@ Doom redraws the whole 3D view each frame, so presenting only changed rows
 saves little in play; the status bar and borders are what stay still.
 Dirty rows are an M9 lever, measured, not a plan.
 
+**Dirty rows, as kept (M9).** Doom draws about 70 frames a second at 35
+tics, so half the frames it publishes repeat the last, and a present spent
+20 ms sending one, behind which the next tic's frame waited. The presenter
+now takes each row's CRC-32 from the DMA sniffer as it reads the row out
+of the PSRAM (no CPU cost) and sends only rows whose CRC or palette differ
+from the frame last presented, opening a new window at each run of changed
+rows (`PICOCALC_DOOM_DIRTY_ROWS`, on). The 960-byte table lives in `.data`,
+in the gap before `.bss` (§12.1), and anything that draws over the frame's
+rows (a page) makes the next frame send every row. Turning in E1M1: 98 rows
+a frame of 240, a present 10.0 ms on average against 20.4, with no late
+halves or underruns. A CRC-32 collision would leave one stale row until it
+changes again: about once in 4×10⁹ changed rows.
+
 **Tearing.** There is no TE line (HW §1.2), and a fast turn will show a
 tear. Accepted, as on most PicoCalc games (HW §4.9).
 
@@ -728,6 +741,18 @@ frames. The levers, each against the last:
 | Upstream's Thumb renderer (`EMU8950_ASM`) | 37.3 | 21–25 % | no faster, and 656 B off core 0's stack; dropped |
 | Vanilla's tic wait in `TryRunTics` | (n/a) | 19 % | turns repeat frames to sleep; the dips stayed; dropped |
 | **The OPL rendered on core 1** (§8.4) | see §16 M6 | **4–5 %** | kept |
+
+**M9, with the OPL on core 1.** `MIX_SRAM` off would give the heap
+24.6 KB (8.6 to 33.2 KB), but EMU8950 from flash took 46.6 % of core 1
+against 23.7 %, and its slots came late (6 late halves in a minute of
+turning, none with it on): kept. The effects mixer alone costs core 0 no
+more from flash, but is 1.5 KB of the 21 KB. The mix ring's size is now a
+build setting (`PICOCALC_DOOM_MIX_RING`, a one-line hunk): 3 slots (86 ms
+of effect latency) or 2 (57 ms) give the heap 5.7 or 11.4 KB, but under
+`-timedemo demo1`, which reads lumps as it meets them, they underran 1
+and 3 slots after the level's start where 4 underran none, and a save's
+59–85 ms write would underrun either. Upstream's 4 stays the default; the
+choice is the owner's, by ear.
 
 `PICOCALC_DOOM_MIX_SRAM`, on by default, puts the effects mixer
 (`I_Pico_UpdateSound`) and EMU8950's renderer (all of `slot_render.cpp`,
@@ -1170,6 +1195,17 @@ and pages reached 724 bytes.
 
 CI prints `arm-none-eabi-size` on every build (EL §2.1); M0 records the
 port's real figures against these.
+
+**The gap before `.bss`** (M9). The PWM ring is 8 KB and aligned to its
+size for the DMA's ring wrap (§8.2), so `.bss` starts on an 8 KB boundary
+and the bytes between the end of `.data` and it belong to nothing (HW
+§2.3). Code and tables put in SRAM by section (`.time_critical.*`,
+`.data.*`) fill it without taking heap: the drawers (1.8 KB) and dirty
+rows' table (960 B) went there in M9, and `.data` now ends at
+`0x20017294`, 3,436 bytes short of the boundary. Past it, `.bss` and the
+heap's start move up 8 KB at once, so anything further put in SRAM is
+checked against `__data_end__` first. The heap, as built in M9: **8,608 B**
+in the development build (play used 4,512), 12,756 in the release.
 
 ### 12.2 PSRAM (8 MB)
 
@@ -1635,7 +1671,8 @@ before any other milestone:
    callers with `nm`). No patch: before the link, `cmake/sram_sections.cmake`
    renames their sections in `r_draw.c`'s and `r_things.c`'s objects to
    the SDK's `.time_critical.*`, which its linker script puts in SRAM
-   (`PICOCALC_DOOM_DRAWERS_SRAM`).
+   (`PICOCALC_DOOM_DRAWERS_SRAM`). On by default since M9: under C,
+   +3 % on demo 1 and +5 % on demo 4, in the gap before `.bss`.
 4. The copy by DMA (§7.3, strategy C).
 
 Only if those fall short does the owner decide on a higher clock (D7).
