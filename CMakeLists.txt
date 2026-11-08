@@ -104,7 +104,15 @@ else()
     # M5 kept it: The Ultimate Doom's demo 4 needed it to reach 35 fps.
     option(PICOCALC_DOOM_COLORMAPS_SRAM "the light tables in SRAM" ON)
     # The third: the column and span drawers in SRAM (cmake/sram_sections.cmake).
-    option(PICOCALC_DOOM_DRAWERS_SRAM "Doom's column and span drawers in SRAM" OFF)
+    # M9 kept it under strategy C: demo 1 57.2 to 58.9 fps, demo 4 41.2 to
+    # 43.1, and no heap: its 1.8 KB sit in the gap the audio's 8 KB-aligned
+    # ring leaves before .bss.
+    option(PICOCALC_DOOM_DRAWERS_SRAM "Doom's column and span drawers in SRAM" ON)
+    # Dirty rows in the presenter (§7.4, M9): a row whose CRC (the DMA
+    # sniffer's, as core 1 reads it) and palette match the frame last
+    # presented is not sent to the LCD again. M9 kept it: turning in E1M1,
+    # a present 20.4 to 10.0 ms, 98 rows a frame of 240.
+    option(PICOCALC_DOOM_DIRTY_ROWS "the presenter sends only the rows that changed" ON)
     # §8.3's first audio lever (M6): upstream's effects mixer and EMU8950's
     # slot renderer and buffer loop in SRAM, out of the XIP cache Doom's
     # renderer needs.
@@ -338,6 +346,7 @@ else()
         PICOCALC_DOOM_VIDEO_BUF_B=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>
         PICOCALC_DOOM_VIDEO_BUF_C=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>
         PICOCALC_DOOM_COPY_CHECK=$<BOOL:${PICOCALC_DOOM_COPY_CHECK}>
+        PICOCALC_DOOM_DIRTY_ROWS=$<BOOL:${PICOCALC_DOOM_DIRTY_ROWS}>
         PICOCALC_DOOM_COLORMAPS_SRAM=$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>
         PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
         PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
