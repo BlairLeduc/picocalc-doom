@@ -14,8 +14,8 @@ held the original 1.9 IWADs, M7's `picocalc.ini` (`iwad = doom.wad`,
 screen size 9 (Found). The levers were measured at 9, each against its
 control at 9; the soak and the final gate were run again at 10, the
 owner's size, on 2026-11-08 after `=` and F10 `y` put it back. Built, run
-and read by Claude; the owner did not play or look at the panel in this
-milestone.
+and read by Claude; the owner looked at the panel and listened on
+2026-11-08 (Checks).
 
 ### Done when
 
@@ -70,6 +70,7 @@ still at E1M1's start (Found).
 | `PICOCALC_DOOM_COPY_CHECK`: Doom's frame unchanged between the copy's start and core 0's wait | **1,708 frames compared, 0 different** |
 | Host tests | **12 of 12**, with `test_engine_screens` (sizes 8 and 9 failed before the fix) |
 | `check_sources.sh` | passed |
+| The panel and the audio, by the owner, 2026-11-08 | **no problems seen or heard**, with dirty rows on and the mix ring at 4 slots |
 | The soak's check against a control | the menu held open for 10 s: **failed**, on those 10 heartbeats ("level tic did not rise") |
 
 ### The soak
@@ -141,12 +142,8 @@ hashes`. **The patch** gains two hunks: `v_video.c`'s, and
 
 ### Not checked
 
-- **The panel by eye** with dirty rows: menus, the automap, the
-  intermission, palette flashes, pages coming and going. The frame hashes
-  check what core 0 publishes, not what core 1 sends.
 - The levers each against its control at screen size 10 (measured at 9;
   the final build's gate and soak at 10).
-- The mix ring's size by ear (effect latency 114 ms at 4 slots).
 - The release build on the device, and the Plus 2 (M10).
 - Demos 2 and 3 with the drawers; Doom II, Plutonia, TNT under `-timedemo`.
 - The keys through the southbridge in a soak (UART keys bypass it; M10's

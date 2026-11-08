@@ -751,8 +751,8 @@ build setting (`PICOCALC_DOOM_MIX_RING`, a one-line hunk): 3 slots (86 ms
 of effect latency) or 2 (57 ms) give the heap 5.7 or 11.4 KB, but under
 `-timedemo demo1`, which reads lumps as it meets them, they underran 1
 and 3 slots after the level's start where 4 underran none, and a save's
-59–85 ms write would underrun either. Upstream's 4 stays the default; the
-choice is the owner's, by ear.
+59–85 ms write would underrun either. Upstream's 4 stays: the owner heard
+no problem with it (2026-11-08).
 
 `PICOCALC_DOOM_MIX_SRAM`, on by default, puts the effects mixer
 (`I_Pico_UpdateSound`) and EMU8950's renderer (all of `slot_render.cpp`,
