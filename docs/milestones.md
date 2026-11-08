@@ -53,6 +53,14 @@ there and no `picocalc.ini` on its card.
   halted, CFSR and HFSR 0; PC and LR read through DCRSR, no halt sent).
   A wrap of `ff_memalloc()` returns NULL for a request that does not fit
   (design.md §10.1, hardware-notes.md §7.1).
+- **A `-playdemo` could not end**: the owner's `/playdemo demo1` from the
+  shell played, but quitting during it stopped with "W_GetNumForName:  not
+  found". doomgeneric's `D_DoomMain()` returns, and the demo's name was a
+  buffer local to it, so `G_CheckDemoStatus()` looked up stack since
+  reused. Upstream's, and a demo's own end would hit it too. Wraps of
+  `G_DeferedPlayDemo()` and `G_TimeDemo()` keep a copy (design.md §13.3).
+  With them, the owner's demo returned to the shell at its end and when
+  quit during it.
 - **ENDOOM would have ended in `exit()`**: `D_Endoom()` is on the at-exit
   list and calls `exit(0)`; `I_Quit()` clears `show_endoom` first.
 - `picocalc_shell.h` was the copy from before the shell's arguments; it is
@@ -92,7 +100,7 @@ In play after the load: heap 4,580 of 8,676 B; core 0's stack 1,960 of
 
 - The fallback date on the Plus 2 W's save, read on a computer.
 - Saves in Plutonia and the other IWADs (Doom's, Doom II's and TNT's were
-  made); a `-playdemo` that ends in `I_Quit()`.
+  made).
 - The release build on the device.
 - The "Doom has quit." page (no shell and no power-off).
 

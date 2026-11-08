@@ -351,6 +351,36 @@ wad_file_t *__wrap_W_AddFile(char *filename)
     return w;
 }
 
+/* The demo's name, kept (§13.3, M8). G_DeferedPlayDemo() and
+ * G_TimeDemo() keep the pointer they are given, and -playdemo's is a
+ * buffer local to D_DoomMain(), which in doomgeneric returns once the
+ * game loop is set up (vanilla's never does). The demo starts while the
+ * buffer is live, but when it ends, or Doom quits during it,
+ * G_CheckDemoStatus() looks the name up again in stack since reused, and
+ * stops with "W_GetNumForName:  not found". Both are called from d_main.c
+ * only, so wrapped at link time: the name is copied where it lasts. */
+void __real_G_DeferedPlayDemo(char *name);
+void __real_G_TimeDemo(char *name);
+
+static char s_demo_name[9];
+
+static char *keep_demo_name(const char *name)
+{
+    strncpy(s_demo_name, name, sizeof s_demo_name - 1u);
+    s_demo_name[sizeof s_demo_name - 1u] = '\0';
+    return s_demo_name;
+}
+
+void __wrap_G_DeferedPlayDemo(char *name)
+{
+    __real_G_DeferedPlayDemo(keep_demo_name(name));
+}
+
+void __wrap_G_TimeDemo(char *name)
+{
+    __real_G_TimeDemo(keep_demo_name(name));
+}
+
 /* Core 0's idle time, for the heartbeat's busy share (§14.3). Upstream
  * mixes once a frame, from S_UpdateSounds(), but its screen wipe draws a
  * second of frames without it, and the ring ran dry at every level's

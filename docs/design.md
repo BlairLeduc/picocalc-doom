@@ -1272,7 +1272,12 @@ Doom has a way out already: Quit Game in the menu, or F10, then `y`, calls
    card, so a change made in Doom's menus survives (it never did upstream,
    §3.2; the patch to `m_config.c`, §5.3). Each is taken off the list before
    it runs, so `G_CheckDemoStatus()`, which quits again at the end of a
-   `-playdemo`, carries on from the next rather than starting over. ENDOOM
+   `-playdemo`, carries on from the next rather than starting over. (That
+   path needs the demo's name to outlive `D_DoomMain()`, which in
+   doomgeneric returns: `-playdemo`'s name was a buffer local to it, and a
+   demo's end or a quit during one stopped with "W_GetNumForName:  not
+   found". Link-time wraps of `G_DeferedPlayDemo()` and `G_TimeDemo()` copy
+   the name where it lasts; found on the board, M8.) ENDOOM
    is not shown (§19): `show_endoom` is cleared first, since `D_Endoom()`
    would call `exit()`. `I_Error()` runs none of them: it starts again, and
    a configuration saved from a game that stopped could be why it did.

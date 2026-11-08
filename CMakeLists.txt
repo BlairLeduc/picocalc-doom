@@ -372,6 +372,9 @@ else()
         # and each WAD's open and directory (picocalc/dg_picocalc.c).
         -Wl,--wrap=I_FinishUpdate
         -Wl,--wrap=W_AddFile
+        # The demo's name kept past D_DoomMain() (picocalc/dg_picocalc.c).
+        -Wl,--wrap=G_DeferedPlayDemo
+        -Wl,--wrap=G_TimeDemo
         # A save directory for each game (picocalc/doom_files.c, §10.2).
         -Wl,--wrap=M_GetSaveGameDir
         # A save's write, timed (picocalc/doom_files.c, M8).
