@@ -35,7 +35,7 @@ Each against the last kept as its control, in one sitting.
 | **The drawers in SRAM** (M5's lever 3) | C | demo 1 57.2 → **58.9**, demo 4 41.2 → **43.1** | **kept**, on; no heap (the gap before `.bss`) |
 | **Dirty rows** in the presenter (§7.4) | C + drawers | turning in E1M1 for 53 s: 98 rows a frame of 240; a present 20.4 → **10.0 ms**; no late halves or underruns | **kept**, on |
 | The mixer and EMU8950 in SRAM (M6) | `MIX_SRAM` off | the OPL 23.7 % of core 1 against 46.6 %, and 6 late halves in 53 s without it; the heap 8.6 against 33.2 KB | **kept** |
-| A smaller mix ring (§8.3) | 4 slots | 3 slots: heap +5.7 KB, effect latency 86 ms, 1 slot underrun in demo 1; 2 slots: +11.4 KB, 57 ms, 3 underruns | **not taken**: 4 stays the default; the owner's to choose by ear (`PICOCALC_DOOM_MIX_RING`) |
+| A smaller mix ring (§8.3) | 4 slots | 3 slots: heap +5.7 KB, effect latency 86 ms, 1 slot underrun in demo 1; 2 slots: +11.4 KB, 57 ms, 3 underruns | **not taken**: 4 stays the default, the owner hearing no problem with it (`PICOCALC_DOOM_MIX_RING`) |
 | More of Doom in the gap | the profile | core 0 under C + drawers, demo 1, 20 s: `R_DrawColumn` 15.9 %, `R_DrawSpan` 9.2 % (both SRAM), then `P_MobjThinker` 6.0 %, `I_Pico_UpdateSound` 5.9 %, `R_RenderSegLoop` 5.5 %, the card's SPI 4.7 %; 61 % in flash. Nothing left worth the SRAM | **not built** |
 
 The gate with every lever kept, audio on, at screen size 10 (2026-11-08,

@@ -1751,7 +1751,7 @@ published rising in every heartbeat, and the tic count with them.
 dropped with its number.
 (Met 2026-11-08: the soak passed on battery at screen size 10. Kept:
 strategy C, the drawers in SRAM, dirty rows, the mixer in SRAM; the mix
-ring left at 4 for the owner; demos 1–4 at 55.7, 59.8, 63.2 and 40.9 fps
+ring left at 4, the owner content by ear; demos 1–4 at 55.7, 59.8, 63.2 and 40.9 fps
 with audio at screen size 10; `milestones.md`.)
 
 ### M10: Release
