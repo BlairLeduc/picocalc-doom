@@ -133,6 +133,13 @@ else()
     # 32,768 (§8.1, M6); saturated, not wrapped.
     set(PICOCALC_DOOM_AUDIO_GAIN 8 CACHE STRING "audio gain over upstream's mix, 1-16")
     set(PICOCALC_DOOM_AUDIO_STALL 0 CACHE STRING "ms core 0's interrupts are masked every 5 s (scratch)")
+    # Upstream's mix ring (§8.3): slots of one tic, 5,684 bytes each, that
+    # the game loop fills ahead of the PWM. Four (upstream's) are 114 ms of
+    # slack and of effect latency.
+    set(PICOCALC_DOOM_MIX_RING 4 CACHE STRING "slots in upstream's mix ring, 2-4")
+    if (NOT PICOCALC_DOOM_MIX_RING MATCHES "^[234]$")
+        message(FATAL_ERROR "PICOCALC_DOOM_MIX_RING is 2, 3 or 4, not ${PICOCALC_DOOM_MIX_RING}")
+    endif()
 
     # Upstream's version, for its own logs: version.txt is "MAJOR MINOR",
     # joined with a dot, as upstream does.
@@ -201,6 +208,8 @@ else()
     # Doom's configuration files read and written on the card (§13.3): the
     # patch compiles m_config.c's file code back in with this, and its
     # stdio calls go to FatFs (picocalc/config_stdio.h).
+    set_property(SOURCE ${PICOCALC_DOOM_UPSTREAM}/src/pico/i_picosound.c
+        APPEND PROPERTY COMPILE_DEFINITIONS MIX_RING_COUNT=${PICOCALC_DOOM_MIX_RING})
     set_property(SOURCE ${PICOCALC_DOOM_UPSTREAM}/src/doomgeneric/doomgeneric/m_config.c
         APPEND PROPERTY COMPILE_DEFINITIONS PICOCALC_DOOM_CONFIG_FILES=1)
 

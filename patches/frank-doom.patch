@@ -193,7 +193,19 @@
  }
 --- a/src/pico/i_picosound.c
 +++ b/src/pico/i_picosound.c
-@@ -286,8 +286,11 @@
+@@ -93,7 +93,11 @@
+ 
+ // Ring buffer: game loop fills ahead, DMA IRQ consumes via fill callback.
+ // 4 slots gives ~114 ms of slack for jittery game tics.
++/* picocalc-doom: the build may choose fewer, for less latency and SRAM
++ * (design.md §8.3). */
++#ifndef MIX_RING_COUNT
+ #define MIX_RING_COUNT 4
++#endif
+ static int16_t mix_ring[MIX_RING_COUNT][PICO_SOUND_BUFFER_SAMPLES * 2];
+ static volatile uint32_t mix_rd = 0;  // read by IRQ
+ static volatile uint32_t mix_wr = 0;  // written by game loop
+@@ -286,8 +290,11 @@
              channel->decompressed_size = block_size;
              assert(channel->decompressed_size && channel->decompressed_size <= sizeof(channel->decompressed));
              const uint8_t *src = channel->data;
