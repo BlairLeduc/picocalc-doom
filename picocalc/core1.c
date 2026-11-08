@@ -16,13 +16,15 @@
 
 #include "audio_shim.h"
 #include "board.h"
-#include "opl_core1.h"
+#include "counters.h"
 #include "framepool.h"
 #include "input.h"
 #include "kbd.h"
 #include "lcd.h"
 #include "log.h"
+#include "opl_core1.h"
 #include "page.h"
+#include "picocalc_doom_version.h"
 #include "southbridge.h"
 #include "status.h"
 #include "video.h"
@@ -33,6 +35,14 @@
 #define HEARTBEAT_US  1000000u
 
 core1_bringup_t g_core1 = { .sb_version = -1 };
+
+/* At a fixed symbol, for SWD (counters.h, §14.2); `used`, since nothing
+ * in the image reads it. The magic is set once core 1 runs. */
+__attribute__((used)) volatile counters_t picocalc_doom_counters = {
+    .layout = COUNTERS_LAYOUT,
+    .battery = -1,
+    .version = PICOCALC_DOOM_VERSION,
+};
 
 volatile uint32_t g_core0_sleep_us;
 volatile uint32_t g_core0_frames;
@@ -337,6 +347,7 @@ void core1_main(void) {
     dma_sniffer_enable((unsigned)s_row_dma, DMA_SNIFF_CTRL_CALC_VALUE_CRC32, false);
 #endif
 
+    picocalc_doom_counters.magic = COUNTERS_MAGIC;
     __dmb();
     g_core1.ready = true;
 
@@ -458,6 +469,37 @@ void core1_main(void) {
             input_stats_t in = g_input;
             uint32_t n_taken = in.taken - last_input.taken;
             uint32_t n_frame = in.frame_n - last_input.frame_n;
+            audio_stats_t au = g_audio;
+            /* The block the release build is watched by (counters.h). */
+            volatile counters_t *c = &picocalc_doom_counters;
+            c->seconds = seconds;
+            c->busy = busy;
+            if (busy > c->busy_max) c->busy_max = busy;
+            c->rendered = frames;
+            c->published = pub;
+            c->presents = ps.presents;
+            c->dropped = drop;
+            c->present_max_us = ps.max_us;
+            c->late = au.late;
+            c->underruns = au.underruns;
+            c->music_late = au.music_late;
+#if PICOCALC_DOOM_OPL_CORE1
+            c->opl_dropped = g_opl_core1.dropped;
+#endif
+            c->keys = in.taken;
+            c->ring_full = kbd_overflows();
+            c->unknown = in.unknown;
+            c->stray = in.stray;
+            c->i2c_errors = sb_error_count();
+            c->log_dropped = log_dropped();
+            c->core0_stack = g_core0_stack;
+            c->core1_stack = core1_stack_used();
+            c->heap = g_core0_heap;
+            c->tic = g_core0_tic;
+            c->leveltime = g_core0_leveltime;
+            c->gamestate = g_core0_gamestate;
+            c->temp_c = temp_c;
+            c->battery = battery;
             printf("hb %lu: core 0 busy %lu.%lu%%, frames %lu, published %lu, presented %lu, "
                    "dropped %lu; copy %lu us (max %lu), publish %lu us (max %lu), "
                    "present %lu us (max %lu), margins %lu; stacks: core 0 %lu of %lu B, "
@@ -522,7 +564,6 @@ void core1_main(void) {
              * slots played and those its ring was empty for (in samples, the
              * slot's frames), the interrupt's time, and mixing's, in
              * I_UpdateSound(), each as a share of core 0's second. */
-            audio_stats_t au = g_audio;
             uint32_t slot = audio_slot_frames();
             uint32_t n_played = au.played - last_audio.played;
             uint32_t irq_share = (au.irq_us - last_audio.irq_us) / (HEARTBEAT_US / 1000u);

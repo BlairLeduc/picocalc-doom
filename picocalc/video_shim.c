@@ -34,11 +34,14 @@
  * empty, so there is no disk icon. PICOCALC_DOOM_COPY_CHECK proves that
  * on the board: at each wait it compares the pool's frame with Doom's.
  *
- * With PICOCALC_DOOM_FRAME_HASHES (M5, §15) each tic's last frame is
- * hashed as the host engine hashes it, after the margins step, and logged
- * as "fh TIC CRC"; scripts/host_engine.sh compare reads them from the
- * capture. It costs core 0 a pass over the frame, so a hash build is never
- * the one timed.
+ * With `-framehashes` in Doom's arguments (M10, §15), or in a build with
+ * PICOCALC_DOOM_FRAME_HASHES (M5), each tic's last frame is hashed as the
+ * host engine hashes it, after the margins step, logged as "fh TIC CRC"
+ * and kept in a list in the PSRAM that the counter block points to, so
+ * the build that ships, with no UART, can be checked too:
+ * scripts/host_engine.sh compare reads the capture, scripts/counters.sh
+ * --hashes the list. It costs core 0 a pass over the frame, so a run with
+ * hashes is never the one timed; without, one test a frame.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -57,7 +60,11 @@
 #include "hardware/xip_cache.h"
 #include "pico/stdlib.h"
 
+#include "m_argv.h"
+#include "psram_allocator.h"
+
 #include "core1.h"
+#include "counters.h"
 #include "frame_hash.h"
 #include "framepool.h"
 #include "input.h"
@@ -125,9 +132,37 @@ void __wrap_I_InitGraphics(void) {
 #define PICOCALC_DOOM_FRAME_HASHES 0
 #endif
 
-#if PICOCALC_DOOM_FRAME_HASHES
 static frame_hash_tic_t s_hash_held;
+/* Whether frames are hashed: -1 until the first frame decides. */
+static int s_hashing = -1;
+/* The list, TIC then CRC, in the PSRAM: demo1 is 1,709 tics. */
+#define HASH_MAX 8192u
+static uint32_t *s_hash_list;
 
+static bool hashing(void) {
+    if (s_hashing < 0) {
+        s_hashing = PICOCALC_DOOM_FRAME_HASHES || M_CheckParm("-framehashes") > 0;
+        if (s_hashing) {
+            s_hash_list = psram_malloc(HASH_MAX * 2u * sizeof(uint32_t));
+            picocalc_doom_counters.hash_list = (uint32_t)(uintptr_t)s_hash_list;
+            (void)printf("frame hashes: on, the list at %p\n", (void *)s_hash_list);
+        }
+    }
+    return s_hashing > 0;
+}
+
+static void hash_done(const frame_hash_tic_t *done) {
+    (void)printf("fh %d %08lx\n", done->tic, (unsigned long)done->crc);
+    uint32_t n = picocalc_doom_counters.hashes;
+    if (s_hash_list && n < HASH_MAX) {
+        s_hash_list[2u * n] = (uint32_t)done->tic;
+        s_hash_list[2u * n + 1u] = done->crc;
+        __dmb();
+        picocalc_doom_counters.hashes = n + 1u;
+    }
+}
+
+#if PICOCALC_DOOM_FRAME_HASHES
 #ifndef PICOCALC_DOOM_FRAME_DUMP_TIC
 #define PICOCALC_DOOM_FRAME_DUMP_TIC -1
 #endif
@@ -153,6 +188,7 @@ static void dump_frame(const uint8_t *px) {
         fputs(line, stdout);
     }
 }
+#endif
 
 static void hash_frame(const uint8_t *px) {
     uint8_t rgb[256 * 3];
@@ -161,25 +197,22 @@ static void hash_frame(const uint8_t *px) {
         rgb[3 * c + 1] = colors[c].g;
         rgb[3 * c + 2] = colors[c].b;
     }
+#if PICOCALC_DOOM_FRAME_HASHES
     static bool dumped;
     if (gametic == PICOCALC_DOOM_FRAME_DUMP_TIC && !dumped) {
         dumped = true;
         dump_frame(px);
     }
+#endif
     frame_hash_tic_t done;
     if (frame_hash_note(&s_hash_held, gametic, frame_hash_frame(px, FRAME_BYTES, rgb), &done)) {
-        printf("fh %d %08lx\n", done.tic, (unsigned long)done.crc);
+        hash_done(&done);
     }
 }
-#endif
 
 void video_hash_flush(void) {
-#if PICOCALC_DOOM_FRAME_HASHES
     frame_hash_tic_t done;
-    if (frame_hash_flush(&s_hash_held, &done)) {
-        printf("fh %d %08lx\n", done.tic, (unsigned long)done.crc);
-    }
-#endif
+    if (s_hashing > 0 && frame_hash_flush(&s_hash_held, &done)) hash_done(&done);
 }
 
 #if PICOCALC_DOOM_VIDEO_BUF_C
@@ -258,9 +291,7 @@ void DG_DrawFrame(void) {
 
     if (prepare(i)) black_margins(px);
 
-#if PICOCALC_DOOM_FRAME_HASHES
-    hash_frame(px);
-#endif
+    if (hashing()) hash_frame(px);
 
     /* Core 1 reads through the uncached alias: the frame must be in the
      * PSRAM, not only in the cache (hardware-notes.md §9.3). */
@@ -409,12 +440,12 @@ void __wrap_I_FinishUpdate(void) {
     dma_channel_set_write_addr((unsigned)s_copy_dma, px + off, false);
     dma_channel_set_trans_count((unsigned)s_copy_dma, bytes / 4u, true);
 
-#if PICOCALC_DOOM_FRAME_HASHES
-    /* A hash build waits here and hashes what the copy wrote; it is never
-     * the one timed. */
-    copy_wait();
-    hash_frame(px);
-#endif
+    if (hashing()) {
+        /* A run with hashes waits here and hashes what the copy wrote; it
+         * is never the one timed. */
+        copy_wait();
+        hash_frame(px);
+    }
 
     note_frame();
     uint32_t us = time_us_32() - t0;

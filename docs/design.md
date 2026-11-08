@@ -1435,7 +1435,12 @@ As Quest §14.1 (D5; HW §2.7, EL §13.1):
   `psram_malloc()` prints every allocation of 64 KB or more. UART keys on.
 - **Release**: no UART, no stdio, GP2/GP3 free, upstream quiet. The counter
   block at a fixed symbol, with a magic word and layout number, read over
-  SWD without halting (HW §2.7) by `scripts/counters.sh`, as Quest §14.2.
+  SWD without halting (HW §2.7) by `scripts/counters.sh`, as Quest §14.2
+  (M10): `picocalc_doom_counters` (`picocalc/counters.h`), filled by core
+  1's heartbeat in both builds, with what the soak checks (frames, the game
+  and level tics, the failure counters, keys, stacks, battery) and the
+  version. `counters.sh --watch 30` is the release soak; its check is
+  `soak_check.sh`'s, with level loads seen as the level tic going back.
 
 ### 14.3 Heartbeat
 
@@ -1510,9 +1515,13 @@ not a CTest, since it needs WADs, which never go in the repository:
   list's header carries the MD5). **The same list from the device** shows
   the engine on the board is the host's (EL §13.3), and it is the check that
   catches a marginal PSRAM or flash timing, which corrupts quietly
-  (HW §3). A build with `PICOCALC_DOOM_FRAME_HASHES=ON` logs the list as
-  `fh TIC CRC` lines, and `scripts/host_engine.sh compare` reads them from
-  the capture; `PICOCALC_DOOM_FRAME_DUMP_TIC` adds one tic's frame as hex
+  (HW §3). Any build hashes when Doom's arguments hold `-framehashes` (M10), so
+  the image that ships can be checked: it logs the list as `fh TIC CRC`
+  lines, which `scripts/host_engine.sh compare` reads from a capture, and
+  keeps it in the PSRAM, where the counter block points and
+  `scripts/counters.sh --hashes` reads it over SWD and compares. Without
+  the argument the cost is one test a frame. A build with
+  `PICOCALC_DOOM_FRAME_HASHES=ON` hashes without it; `PICOCALC_DOOM_FRAME_DUMP_TIC` adds one tic's frame as hex
   rows, to set beside the host engine's `-hostshot TIC FILE.raw`.
 - **Zone low-water**, warping to every map of every IWAD to hand and
   running a minute of tics in each (§12.2), and the WAD directory's size

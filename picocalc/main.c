@@ -22,6 +22,7 @@
 #include "board_config.h"
 #include "clock.h"
 #include "core1.h"
+#include "counters.h"
 #include "log.h"
 #include "page.h"
 #include "picocalc_doom_version.h"
@@ -114,6 +115,8 @@ static void log_partition(void) {
                         >> PICOBIN_PARTITION_LOCATION_LAST_SECTOR_LSB;
         size = (last + 1u - first) * 4096u;
     }
+    picocalc_doom_counters.image_kb = image / 1024u;
+    picocalc_doom_counters.partition_kb = size / 1024u;
     if (size == 0) {
         printf("  flash        : image %lu KB; no partition table (%d)\n",
                (unsigned long)(image / 1024u), n);
@@ -159,6 +162,7 @@ int main(void) {
            (unsigned long)g_core1.i2c_hz, g_core1.sb_version, (unsigned long)g_core1.i2c_us,
            g_core1.sb_power_off ? ", can power off" : ", cannot power off",
            g_core1.sb_version < 0 ? "; NOT ANSWERING: switch the PicoCalc off and on" : "");
+    picocalc_doom_counters.loader = picocalc_shell_loader_present();
     printf("  loader       : %s\n", picocalc_shell_loader_present()
            ? "started by UF2 Loader" : "installed from BOOTSEL, or over SWD");
     log_partition();
