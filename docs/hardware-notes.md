@@ -1630,6 +1630,28 @@ debounced for 500 ms caught the insertion cleanly, and a watchdog reboot
 made with the core that polls the southbridge parked between transactions
 left the southbridge answering, with no I²C errors after.
 
+**Measured** on a Plus 2 W, 2026-11-07, the same driver and settings, the
+same FAT32 card, at 300 MHz: a game's save file written a few seconds into
+a level, the whole sequence (a temporary file created, written in many
+small writes, closed, the old file removed and the temporary one renamed
+over it), took **85 ms** while the game ran. Two small text files of
+settings written one after the other at exit, then the volume unmounted,
+took **35 ms** together with the program's other exit work. Making a new
+directory works only when FatFs can have a buffer for clearing it, or is
+refused one (see the next paragraph).
+
+**`f_mkdir` allocates up to 32 KB** with FatFs's `FF_USE_LFN 3` (working
+buffers on the heap): to clear the new directory's cluster it asks
+`ff_memalloc()` for the cluster size, capped at 32 KB, halving the request
+on each NULL and clearing sector by sector if every request fails. The Pico
+SDK's `malloc()` panics on failure instead of returning NULL
+(`PICO_MALLOC_PANIC`, on by default), so with less heap than a cluster the
+first new directory stops the program in `panic("Out of memory")`; with a
+debugger attached the core halts at the panic's breakpoint, with no fault
+recorded. Seen on a Plus 2 W, 2026-11-07, with about 4 KB of heap free and
+32 KB clusters. Wrapping `ff_memalloc()` so it returns NULL for a request
+that does not fit lets FatFs's own fallback run.
+
 **Prefer the card to internal flash for anything the application writes**,
 such as settings. A text file on the card is one source of truth the user can
 read and edit on any computer, it survives reflashing, and writing it opens no

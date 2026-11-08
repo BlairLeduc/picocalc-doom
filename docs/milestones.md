@@ -4,6 +4,106 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M8: saves, configuration, exit, time, arguments
+
+**2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,
+flashed over SWD with `scripts/flash.sh` (so no UF2 Loader: the exit's
+power-off path); development build, Arm GCC 15.2.Rel1, Pico SDK 2.3.1;
+300 MHz at 1.20 V; UART0 captured. The card held the original 1.9 IWADs
+and M7's `picocalc.ini` (`iwad = doom.wad`, `args = -skill 4`). Before the
+work the owner settled D10, D14 (Doom's Quit), D15 (the shell's arguments)
+and a save directory for each game. Built, run over the UART and read by
+Claude; the PicoCalc switched back on by the owner. The shell's checks were
+run by the owner on a Pimoroni Pico Plus 2 (RP2350B rev 2) in a second
+PicoCalc, started from the shell under UF2 Loader, with UART0 captured
+there and no `picocalc.ini` on its card.
+
+### Done when
+
+| Check | Result |
+|---|---|
+| A save made in Doom loads after a power cycle | **passed**: a new game, F2 and slot 0 over the UART, saved to `/doom/.savegame/doom.wad/`; F10 `y` switched the PicoCalc off; the owner switched it on; F3 and Enter loaded it (`gameaction` 3, no error) |
+| A change in Doom's options menu survives a quit and a power cycle | **passed**: the screen made one step smaller (`-`), F10 `y`, off, on: `screenblocks 9`, from 10, read back from `default.cfg` |
+| F10 then `y` returns to the shell when started by it | **passed**, the owner, on the Plus 2, twice (Doom II and Doom; the at-exit list in 27 and 29 ms); Esc in the WAD list too, four times |
+| F10 then `y` powers off when installed without the loader | **passed**: "exit: power off in 6 s, asked for 5 ms after the key"; the PicoCalc went off |
+| A save after starting from the shell carries the shell's local date and time | **passed**: the owner saved in Doom started from the shell and read the file's date and time on the card, correct, and again in Doom II, in `doom2.wad/`, in TNT: Evilution, in `tnt.wad/`, and in Plutonia, in `plutonia.wad/`; the port had the shell's clock, 2026-11-07 18:29:45, UTC−5 |
+| A save after a cold power-on without the shell carries the fallback | **not yet read**: the save above was made with "the shell's clock is not set"; its date on the card, FatFs's 2022-01-01, is to be read on a computer |
+| `picocalc-doom -file <pwad> -warp 1 1` from the shell starts that map with that PWAD | **passed for the PWAD**, the owner: `-iwad doom.wad -file nerve.wad` from `/doom` gave `-iwad /doom/doom.wad -file /doom/nerve.wad`, and Doom added both (`nerve.wad` 117 lumps in 20 ms) and started. Then with `-warp`, the owner: it started the map asked for. Earlier, the words arrived (`-iwad /doom/doom2.wad` from `/doom` started Doom II); `-iwad doom2.wad` from `/home` failed ("IWAD file '/home/doom2.wad' not found!"), fixed since: a file not found from the user's directory goes as typed, for Doom to find in `/doom` (design.md §13.4); the same command from `/home` on the fixed build then worked, and a like command in the shell's DOS flavour (`/` switches), the owner |
+| **Measured**: save write time | **85 ms** on the Plus 2 W, **59 ms** on the Plus 2, from the temporary file's name to the rename done |
+| **Measured**: time from `y` to the shell's first screen | **about 3 s**, the owner by stopwatch, on the Plus 2: the at-exit list 27–29 ms, then the 2 s "Back to the shell." page, then UF2 Loader loading the shell, about 1 s. On the Plus 2 W without the loader, the power-off was asked 5 ms after the key |
+
+### Found
+
+- **Upstream never read or wrote `default.cfg`**: `m_config.c`'s
+  `LoadDefaultCollection()` and `SaveDefaultCollection()` are under
+  `#if ORIGCODE`. Three one-line hunks compile them back in; their
+  `fprintf()`, `fscanf()` and `feof()` go to FatFs through
+  `picocalc/config_stdio.h`, which also undoes the quiet build's
+  `fprintf()`, under which the release would have written an empty file.
+  Checked in the release binary: `SaveDefaultCollection()` calls the port's
+  `fprintf` ten times (design.md §3.2, §5.3).
+- **Four bindings do not survive `default.cfg`**: fire, use and the
+  strafes are doomgeneric's codes 160–163, which the file holds as no scan
+  code and reads back as unbound. `test_config_file` shows it; on the board
+  each boot after the first quit logs the four put back by
+  `I_InitJoystick()` (design.md §9.4).
+- **The first new directory stopped the program**: FatFs's `f_mkdir()`
+  asks for up to 32 KB and falls back on NULL, but the SDK's `malloc()`
+  panics. Core 0 was found halted at `panic("Out of memory")` (DHCSR
+  halted, CFSR and HFSR 0; PC and LR read through DCRSR, no halt sent).
+  A wrap of `ff_memalloc()` returns NULL for a request that does not fit
+  (design.md §10.1, hardware-notes.md §7.1).
+- **A `-playdemo` could not end**: the owner's `/playdemo demo1` from the
+  shell played, but quitting during it stopped with "W_GetNumForName:  not
+  found". doomgeneric's `D_DoomMain()` returns, and the demo's name was a
+  buffer local to it, so `G_CheckDemoStatus()` looked up stack since
+  reused. Upstream's, and a demo's own end would hit it too. Wraps of
+  `G_DeferedPlayDemo()` and `G_TimeDemo()` keep a copy (design.md §13.3).
+  With them, the owner's demo returned to the shell at its end and when
+  quit during it.
+- **ENDOOM would have ended in `exit()`**: `D_Endoom()` is on the at-exit
+  list and calls `exit(0)`; `I_Quit()` clears `show_endoom` first.
+- `picocalc_shell.h` was the copy from before the shell's arguments; it is
+  now the shell's of 2026-11-05.
+- **A file given from the shell is not always the user's**: `-iwad
+  doom2.wad` typed in `/home` means `/doom`'s IWAD, which Doom finds from
+  its own directory. A file word is made a path from the user's directory
+  only when it is there.
+- **`-file` with an IWAD shows the WAD list**, rightly: it names an add-on,
+  not the game. The owner had read it as choosing the game; `-iwad` does
+  that. Kept as Doom's (the owner, 2026-11-07).
+- Doom II's saves went to `/doom/.savegame/doom2.wad/`, Doom's to
+  `doom.wad/`, each made on first use (with the `ff_memalloc()` wrap).
+
+**The code**: `doom_files.c` (configuration stdio, the save directory, the
+save timing, the FatFs allocation), `config_stdio.h`, `shell_args.c`,
+`I_AtExit()` and `I_Quit()` in `dg_picocalc.c`, the "Doom has quit." page,
+`PICOCALC_SHELL_TAKES_ARGS` in `main.c`. **The patch** gains `m_config.c`'s
+three hunks. Host tests **11 of 11**, with `test_shell_args` and
+`test_config_file`; `check_sources.sh` passed; the release build builds,
+not run on the device.
+
+### Sizes
+
+| | M7, development | M8, development | M8, release |
+|---|---:|---:|---:|
+| `.text` | 302,824 | 306,892 | 280,780 |
+| `.rodata` | 143,436 | 144,932 | 136,364 |
+| `.data` | 91,836 | 91,836 | 91,812 |
+| `.bss` | 416,832 | 417,308 | 413,156 |
+| SRAM left for the heap | 9,152 | **8,676** | 12,828 |
+
+In play after the load: heap 4,580 of 8,676 B; core 0's stack 1,960 of
+3,072 B.
+
+### Not checked
+
+- The fallback date on the Plus 2 W's save, read on a computer.
+- Saves in the IWADs not on the card (shareware, Freedoom, Chex Quest,
+  HACX).
+- The release build on the device.
+- The "Doom has quit." page (no shell and no power-off).
+
 ## M7: controls and settings
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,

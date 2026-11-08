@@ -10,8 +10,9 @@
  * starts the IWAD, from the WAD list when there is more than one and the
  * settings name none (§13.1, D13), with the settings' args (D15);
  * I_InitJoystick() applies the run setting (§9.4); I_Error() shows its page and
- * starts again on a key. The at-exit list and Doom's Quit to the shell
- * (§13.3) replace the marked parts in M8.
+ * starts again on a key; I_Quit() runs the at-exit list, which saves
+ * Doom's configuration, and leaves to the shell or powers off (§13.3).
+ * The shell's arguments follow picocalc.ini's (§13.4).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -19,10 +20,13 @@
 /* Doom's headers first: doomtype.h declares boolean's false and true as
  * enumerators, which <stdbool.h>'s macros would turn into numbers. */
 #include "doomgeneric.h"
+#include "doomstat.h"
 #include "doomtype.h"
 #include "i_system.h"
 #include "i_sound.h"
 #include "m_argv.h"
+#include "m_controls.h"
+#include "m_menu.h"
 #include "w_wad.h"
 
 #include "pico/stdlib.h"
@@ -37,11 +41,13 @@
 #include "picocalc_shell.h"
 #include "psram_allocator.h"
 #include "settings.h"
+#include "shell_args.h"
 #include "video.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 extern void stdio_fatfs_init(void);
 
@@ -151,6 +157,7 @@ void DG_Init(void)
     video_init();
 
     check_card();
+    shell_args_load();
     f_chdir("/doom");
     stdio_fatfs_init();
     settings_load();
@@ -177,7 +184,8 @@ static const struct {
 #define IWADS (sizeof s_iwads / sizeof s_iwads[0])
 _Static_assert(IWADS <= PAGE_LIST_MAX, "every IWAD fits the list");
 
-#define MAX_ARGS 32
+/* Doom's arguments: the build's, -iwad, picocalc.ini's and the shell's. */
+#define MAX_ARGS 48
 
 /* Split s at spaces into args[n...], in place; returns the new n. */
 static int split_args(char *s, char **args, int n)
@@ -254,16 +262,17 @@ static int settings_iwad(const unsigned *found, unsigned n_found)
     return -1;
 }
 
-/* Which IWAD to start (§13.1, D13): an -iwad in the build's arguments or
- * picocalc.ini's args; picocalc.ini's iwad; the only one when the card
- * has one; otherwise the one chosen from the WAD list. Doom's arguments
- * are the build's, then -iwad, then picocalc.ini's args (D15). */
+/* Which IWAD to start (§13.1, D13): an -iwad in the build's arguments,
+ * picocalc.ini's args or the shell's; picocalc.ini's iwad; the only one
+ * when the card has one; otherwise the one chosen from the WAD list.
+ * Doom's arguments are the build's, then -iwad, then picocalc.ini's args,
+ * then the shell's, so the shell's win where Doom takes the last (D15). */
 void DG_StartScreen(void)
 {
     static char build_args[] = PICOCALC_DOOM_ARGS;
     static char ini_args[SETTINGS_ARGS_MAX];
     static char *args[MAX_ARGS + 1];
-    char *extra[MAX_ARGS];
+    char *extra[MAX_ARGS + SHELL_ARGS_MAX];
     unsigned found[IWADS], n_found = 0;
     int n = 0;
 
@@ -284,12 +293,18 @@ void DG_StartScreen(void)
     n = split_args(build_args, args, n);
     memcpy(ini_args, g_settings.args, sizeof ini_args);
     int n_extra = split_args(ini_args, extra, 0);
+    int n_shell;
+    char **shell = shell_args_words(&n_shell);
+    for (int i = 0; i < n_shell; i++) {
+        extra[n_extra++] = shell[i];
+    }
+    /* Doom's options are without case: the DOS flavour's are capitals. */
     boolean named = false;
     for (int i = 1; i < n; i++) {
-        named |= strcmp(args[i], "-iwad") == 0;
+        named |= strcasecmp(args[i], "-iwad") == 0;
     }
     for (int i = 0; i < n_extra; i++) {
-        named |= strcmp(extra[i], "-iwad") == 0;
+        named |= strcasecmp(extra[i], "-iwad") == 0;
     }
     if (!named && n + 2 <= MAX_ARGS) {
         int ini = settings_iwad(found, n_found);
@@ -334,6 +349,36 @@ wad_file_t *__wrap_W_AddFile(char *filename)
     (void)before;
     (void)us;
     return w;
+}
+
+/* The demo's name, kept (§13.3, M8). G_DeferedPlayDemo() and
+ * G_TimeDemo() keep the pointer they are given, and -playdemo's is a
+ * buffer local to D_DoomMain(), which in doomgeneric returns once the
+ * game loop is set up (vanilla's never does). The demo starts while the
+ * buffer is live, but when it ends, or Doom quits during it,
+ * G_CheckDemoStatus() looks the name up again in stack since reused, and
+ * stops with "W_GetNumForName:  not found". Both are called from d_main.c
+ * only, so wrapped at link time: the name is copied where it lasts. */
+void __real_G_DeferedPlayDemo(char *name);
+void __real_G_TimeDemo(char *name);
+
+static char s_demo_name[9];
+
+static char *keep_demo_name(const char *name)
+{
+    strncpy(s_demo_name, name, sizeof s_demo_name - 1u);
+    s_demo_name[sizeof s_demo_name - 1u] = '\0';
+    return s_demo_name;
+}
+
+void __wrap_G_DeferedPlayDemo(char *name)
+{
+    __real_G_DeferedPlayDemo(keep_demo_name(name));
+}
+
+void __wrap_G_TimeDemo(char *name)
+{
+    __real_G_TimeDemo(keep_demo_name(name));
 }
 
 /* Core 0's idle time, for the heartbeat's busy share (§14.3). Upstream
@@ -397,15 +442,53 @@ void *I_Realloc(void *ptr, size_t size)
     return p;
 }
 
+/* The functions Doom asks to run when it quits (§13.3): M_SaveDefaults()
+ * among them, which writes default.cfg. Upstream's list is malloc'd; this
+ * holds more than Doom registers (six). I_Error() does not run them: it
+ * starts again, and a configuration saved from a game that stopped could
+ * be the reason it did. */
+#define AT_EXIT_MAX 12
+
+static atexit_func_t s_at_exit[AT_EXIT_MAX];
+static int s_at_exit_n;
+
+/* d_main.c's: ENDOOM is not shown (§19), and D_Endoom() would call
+ * exit() after it. */
+extern int show_endoom;
+
+/* Doom's Quit (F10 or the menu, then y), and the end of a -playdemo:
+ * the at-exit list, then out to the shell or off (§13.3). Upstream
+ * rebooted, with any southbridge transaction in flight (§6.2), and saved
+ * nothing. */
 void I_Quit(void)
 {
-    /* M8 runs the at-exit list and leaves to the shell or powers off
-     * (§13.3). Upstream rebooted; M0 stops, since a reset with a
-     * southbridge transaction in flight is fatal to the keyboard once
-     * core 1 polls it (§6.2). */
-    for (;;) {
-        tight_loop_contents();
+    FRANK_DOOM_LOG("picocalc-doom: I_Quit, %d at-exit function(s)\n", s_at_exit_n);
+    show_endoom = 0;
+    uint32_t t0 = time_us_32();
+    /* The last registered first, as upstream's list runs. Each is taken
+     * off before it runs, so one that quits again (G_CheckDemoStatus()
+     * at the end of a -playdemo) carries on from the next. */
+    while (s_at_exit_n > 0) {
+        atexit_func_t func = s_at_exit[--s_at_exit_n];
+        func();
     }
+    FRANK_DOOM_LOG("picocalc-doom: the at-exit list ran in %lu ms\n",
+                   (unsigned long)((time_us_32() - t0) / 1000u));
+    g_core0_stack = core0_stack_used();
+    (void)t0;
+
+    picocalc_exit();
+
+    /* Nowhere to go: no shell, and a southbridge that cannot switch off.
+     * The settings are saved; a key starts again. */
+    page_show(PAGE_CANNOT_LEAVE);
+    while (input_next_press() >= 0) {
+    }
+    while (input_next_press() < 0) {
+        sleep_ms(5);
+    }
+    FRANK_DOOM_LOG("picocalc-doom: a key on the cannot-leave page; starting again\n");
+    picocalc_restart();
 }
 
 byte *I_ZoneBase(int *size)
@@ -423,11 +506,14 @@ byte *I_ZoneBase(int *size)
     return p;
 }
 
-void I_AtExit(void (*func)(void), boolean run_on_error)
+void I_AtExit(atexit_func_t func, boolean run_on_error)
 {
-    /* M8 keeps these and I_Quit() runs them (§13.3). */
-    (void)func;
-    (void)run_on_error;
+    (void)run_on_error;   /* I_Error() runs none of them */
+    if (s_at_exit_n == AT_EXIT_MAX) {
+        FRANK_DOOM_LOG("picocalc-doom: the at-exit list is full; a function dropped\n");
+        return;
+    }
+    s_at_exit[s_at_exit_n++] = func;
 }
 
 void I_PrintBanner(char *msg)
@@ -463,13 +549,40 @@ void I_Init(void)
     I_InitGraphics();
 }
 
+/* doomgeneric's own codes for fire, use and the strafes, which the key
+ * map sends (§9.2), are not DOS scan codes: default.cfg holds a key as
+ * its scan code, so Doom writes these four as their codes, 160 to 163,
+ * and reads any number past 127 back as 0, unbound. Doom's menus cannot
+ * change a binding, so one of these unbound after the load is the file's
+ * doing, not the player's, and is put back (§13.3). */
+static void keep_bindings(void)
+{
+    static const struct { int *key; int code; const char *name; } kept[] = {
+        { &key_fire, KEY_FIRE, "key_fire" },
+        { &key_use, KEY_USE, "key_use" },
+        { &key_strafeleft, KEY_STRAFE_L, "key_strafeleft" },
+        { &key_straferight, KEY_STRAFE_R, "key_straferight" },
+    };
+    for (unsigned i = 0; i < sizeof kept / sizeof kept[0]; i++) {
+        if (*kept[i].key == 0) {
+            *kept[i].key = kept[i].code;
+            FRANK_DOOM_LOG("  bindings     : %s put back to %d\n", kept[i].name, kept[i].code);
+        }
+    }
+}
+
 /* Doom calls this after M_LoadDefaults(), so what is set here wins over
- * default.cfg: the run setting, as a shim, not the d_main.c hunk §9.4
- * first planned (§5.3). Doom's first frame is near, so a settings line
- * not used is named in the band now; core 1 shows it once the bands are
- * clear. */
+ * default.cfg: the bindings default.cfg cannot hold, and the run setting,
+ * as a shim, not the d_main.c hunk §9.4 first planned (§5.3). Doom's
+ * first frame is near, so a settings line not used is named in the band
+ * now; core 1 shows it once the bands are clear. */
 void I_InitJoystick(void)
 {
+    /* What default.cfg gave, so a change made in the menus can be seen
+     * to have lasted (M8). */
+    FRANK_DOOM_LOG("  config       : screenblocks %d, sfx_volume %d, music_volume %d\n",
+                   screenblocks, sfxVolume, musicVolume);
+    keep_bindings();
     settings_apply_run();
     settings_announce();
 }
