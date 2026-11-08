@@ -14,7 +14,9 @@
 # The block is found by its symbol in the image, so the image must be the
 # one running. OpenOCD starts with `init` alone: no reset, no halt, so
 # the audio plays on. A watch keeps one OpenOCD for the whole run and
-# writes a line a read to out/counters-<time>.log.
+# writes a line a read to out/counters-<time>.log. A read is taken twice,
+# up to six times, until two agree, since a read can tear against the
+# heartbeat writing the block (hardware-notes.md §2.7).
 #
 # --hashes reads the frame hash list a run with `-framehashes` in Doom's
 # arguments kept (design.md §15; `args = -timedemo demo1 -framehashes` in
@@ -291,8 +293,15 @@ fi
     -c "init" \
     -c "for {set i 0} {\$i < $reads} {incr i} {
             if {\$i > 0} { sleep [expr {$every * 1000}] }
+            set t [clock milliseconds]
+            set a [read_memory $addr 32 $words]
+            for {set k 0} {\$k < 5} {incr k} {
+                set b [read_memory $addr 32 $words]
+                if {\$a eq \$b} break
+                set a \$b
+            }
             set f [open {$log} a]
-            puts \$f \"[clock milliseconds] [read_memory $addr 32 $words]\"
+            puts \$f \"\$t \$a\"
             close \$f
         }" \
     -c "shutdown" 2>"$log.openocd" || {

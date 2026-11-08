@@ -457,6 +457,18 @@ each a fresh OpenOCD, left the audio's underrun and late-refill counts at 0
 and dropped no video frames. Each read takes about a second, most of it
 OpenOCD starting.
 
+**PSRAM can be read over SWD through the cached XIP alias while the
+program runs, and the read sees what the cores wrote through the cache.**
+A program wrote a 13.7 KB table (1,709 pairs of words) into the PSRAM at
+`0x1139045c`, through the cached window, and never cleaned the cache;
+OpenOCD started with `init` alone then read it with `read_memory` at that
+address in one call, with both cores running. Every pair matched a list
+made independently on a workstation, bar the entries known to differ, so
+the debug port's access went through the XIP cache, not around it to stale
+PSRAM. **Measured** on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a
+PicoCalc, 2026-11-08, 300 MHz, PSRAM at 100 MHz, CMSIS-DAP Debug Probe at
+5 MHz SWD: the 3,418-word read took a few seconds with OpenOCD's start.
+
 **A profile over SWD, without stopping the core.** The Cortex-M33's DWT
 has a PC sample register, `DWT_PCSR` at `0xE000101C`: each read returns
 the address the core is executing. Set `DEMCR.TRCENA` (bit 24 of
