@@ -19,6 +19,21 @@
  * time it runs; the zone block upstream allocated is left as it is, so the
  * zone's layout stays the host engine's and the frame hashes compare.
  *
+ * C (M9) is B with the copy into the pool by DMA. I_FinishUpdate()'s wrap
+ * then replaces upstream's (which is the copy and the margins, both done
+ * here) rather than calling it: it converts the palette, blacks the
+ * margins past the cache if they need it, and starts a DMA from the SRAM
+ * frame to the pool buffer's uncached alias, which writes past the XIP
+ * cache and so needs no clean. The channel's interrupt publishes the
+ * buffer and claims the next when the copy is done. Core 0 meanwhile runs
+ * the next tic; it waits for the copy before anything can draw into
+ * I_VideoBuffer again: after S_UpdateSounds() (the last call before
+ * D_Display() in doomgeneric_Tick()), before each step of the screen wipe
+ * (whose loop draws and finishes frames inside D_Display()), and at the
+ * next I_FinishUpdate(). Nothing in TryRunTics() draws: I_BeginRead() is
+ * empty, so there is no disk icon. PICOCALC_DOOM_COPY_CHECK proves that
+ * on the board: at each wait it compares the pool's frame with Doom's.
+ *
  * With PICOCALC_DOOM_FRAME_HASHES (M5, §15) each tic's last frame is
  * hashed as the host engine hashes it, after the margins step, and logged
  * as "fh TIC CRC"; scripts/host_engine.sh compare reads them from the
@@ -34,7 +49,10 @@
 #include "doomstat.h"
 #include "i_video.h"
 #include "d_loop.h"
+#include "s_sound.h"
 
+#include "hardware/dma.h"
+#include "hardware/irq.h"
 #include "hardware/sync.h"
 #include "hardware/xip_cache.h"
 #include "pico/stdlib.h"
@@ -78,9 +96,19 @@ static uint32_t s_draw_us;
 #ifndef PICOCALC_DOOM_VIDEO_BUF_B
 #define PICOCALC_DOOM_VIDEO_BUF_B 0
 #endif
+#ifndef PICOCALC_DOOM_VIDEO_BUF_C
+#define PICOCALC_DOOM_VIDEO_BUF_C 0
+#endif
+#ifndef PICOCALC_DOOM_COPY_CHECK
+#define PICOCALC_DOOM_COPY_CHECK 0
+#endif
 
-#if PICOCALC_DOOM_VIDEO_BUF_B
-/* Strategy B (§7.3): the frame Doom draws, in SRAM. Word-aligned for
+static inline uint8_t *uncached(uint8_t *px) {
+    return (uint8_t *)((uintptr_t)px - PSRAM_CACHED + PSRAM_UNCACHED);
+}
+
+#if PICOCALC_DOOM_VIDEO_BUF_B || PICOCALC_DOOM_VIDEO_BUF_C
+/* Strategies B and C (§7.3): the frame Doom draws, in SRAM. Word-aligned for
  * upstream's memcpy. */
 static uint8_t s_video_sram[SCREENWIDTH * SCREENHEIGHT] __attribute__((aligned(4)));
 
@@ -154,6 +182,10 @@ void video_hash_flush(void) {
 #endif
 }
 
+#if PICOCALC_DOOM_VIDEO_BUF_C
+static void copy_init(void);
+#endif
+
 static void claim(void) {
     uint32_t irq = spin_lock_blocking(s_lock);
     s_filling = framepool_claim(&s_pool);
@@ -170,18 +202,24 @@ void video_init(void) {
         memset(px[i], 0, FRAME_BYTES);
     }
     xip_cache_clean_range((uintptr_t)px[0] - XIP_BASE, FRAMEPOOL_COUNT * FRAME_BYTES);
+#if PICOCALC_DOOM_VIDEO_BUF_C
+    /* Under C nothing reads or writes the pool through the cache again:
+     * no lines of it are left there to go stale. */
+    xip_cache_invalidate_range((uintptr_t)px[0] - XIP_BASE, FRAMEPOOL_COUNT * FRAME_BYTES);
+#endif
     s_lock = spin_lock_init(spin_lock_claim_unused(true));
     framepool_init(&s_pool, px);
     claim();
+#if PICOCALC_DOOM_VIDEO_BUF_C
+    copy_init();
+#endif
     __dmb();
     s_ready = true;
 }
 
-void DG_DrawFrame(void) {
-    uint32_t t0 = time_us_32();
-    int i = s_filling;
-    uint8_t *px = s_pool.pixels[i];
-
+/* Buffer i's palette, Doom's current one; and whether its margins must
+ * be blacked now (framepool.h). */
+static bool prepare(int i) {
     if (palette_changed) {
         for (unsigned c = 0; c < 256; c++) {
             s_pending[c] = frame_rgb565(((uint32_t)colors[c].r << 16) |
@@ -190,14 +228,31 @@ void DG_DrawFrame(void) {
         palette_changed = false;
     }
     memcpy(s_pool.palette[i], s_pending, sizeof s_pending);
+    /* gamestate is the one the copy goes by. */
+    if (!framepool_margins(&s_pool, i, gamestate == GS_LEVEL)) return false;
+    g_video.margins++;
+    return true;
+}
 
-    /* gamestate is the one upstream's copy just went by. */
-    if (framepool_margins(&s_pool, i, gamestate == GS_LEVEL)) {
-        const unsigned m = FRAMEPOOL_MARGIN_ROWS * FRAMEPOOL_W;
-        memset(px, 0, m);
-        memset(px + FRAME_BYTES - m, 0, m);
-        g_video.margins++;
-    }
+static void black_margins(uint8_t *px) {
+    const unsigned m = FRAMEPOOL_MARGIN_ROWS * FRAMEPOOL_W;
+    memset(px, 0, m);
+    memset(px + FRAME_BYTES - m, 0, m);
+}
+
+/* Core 0's per-frame stack and heap readings, for the heartbeat. */
+static void note_frame(void) {
+    g_core0_frames++;
+    g_core0_stack = core0_stack_used();
+    g_core0_heap = core0_heap_used();
+}
+
+void DG_DrawFrame(void) {
+    uint32_t t0 = time_us_32();
+    int i = s_filling;
+    uint8_t *px = s_pool.pixels[i];
+
+    if (prepare(i)) black_margins(px);
 
 #if PICOCALC_DOOM_FRAME_HASHES
     hash_frame(px);
@@ -214,14 +269,14 @@ void DG_DrawFrame(void) {
     /* A press Doom took before this frame: its key-to-frame time (M4). */
     input_frame_published(time_us_32());
 
-    g_core0_frames++;
-    g_core0_stack = core0_stack_used();
-    g_core0_heap = core0_heap_used();
+    note_frame();
     uint32_t us = time_us_32() - t0;
     s_draw_us = us;
     g_video.publish_us += us;
     if (us > g_video.publish_max_us) g_video.publish_max_us = us;
 }
+
+#if !PICOCALC_DOOM_VIDEO_BUF_C
 
 void __real_I_FinishUpdate(void);
 
@@ -234,6 +289,151 @@ void __wrap_I_FinishUpdate(void) {
     g_video.copy_us += copy;
     if (copy > g_video.copy_max_us) g_video.copy_max_us = copy;
 }
+
+#else /* strategy C */
+
+/* DMA_IRQ_1 is the audio's (audio_shim.c); core 1's channels are polled. */
+#define COPY_IRQ DMA_IRQ_0
+
+static int s_copy_dma = -1;
+/* Set by core 0 when it starts a copy, cleared by the interrupt when the
+ * copy is done and the buffer published. */
+static volatile bool s_copy_busy;
+static uint32_t s_copy_t0;
+/* The interrupt's time of publishing, for the key-to-frame figure, which
+ * logs, so is noted in thread context (input_frame_published). */
+static volatile uint32_t s_copy_published_at;
+static volatile bool s_copy_note;
+
+#if PICOCALC_DOOM_COPY_CHECK
+static const uint8_t *s_check_dst;
+static unsigned s_check_bytes;
+#endif
+
+static void copy_irq(void) {
+    dma_irqn_acknowledge_channel(0, (unsigned)s_copy_dma);
+    uint32_t now = time_us_32();
+    uint32_t us = now - s_copy_t0;
+    g_video.dma_us += us;
+    if (us > g_video.dma_max_us) g_video.dma_max_us = us;
+
+    /* Core 0's thread never holds the lock with interrupts on, so this
+     * cannot deadlock with it; core 1 holds it for a few instructions. */
+    uint32_t irq = spin_lock_blocking(s_lock);
+    framepool_publish(&s_pool, s_filling);
+    s_filling = framepool_claim(&s_pool);
+    spin_unlock(s_lock, irq);
+    hard_assert(s_filling >= 0);
+    DG_ScreenBuffer = s_pool.pixels[s_filling];
+
+    s_copy_published_at = now;
+    s_copy_note = true;
+    __dmb();
+    s_copy_busy = false;
+}
+
+static void copy_init(void) {
+    s_copy_dma = dma_claim_unused_channel(true);
+    dma_channel_config c = dma_channel_get_default_config((unsigned)s_copy_dma);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, true);
+    dma_channel_set_config((unsigned)s_copy_dma, &c, false);
+    dma_irqn_set_channel_enabled(0, (unsigned)s_copy_dma, true);
+    irq_set_exclusive_handler(COPY_IRQ, copy_irq);
+    irq_set_enabled(COPY_IRQ, true);
+}
+
+/* Core 0, thread context: the copy started by the last I_FinishUpdate()
+ * done, so I_VideoBuffer may be drawn into again. */
+static void copy_wait(void) {
+    if (s_copy_busy) {
+        uint32_t t0 = time_us_32();
+        while (s_copy_busy) tight_loop_contents();
+        uint32_t us = time_us_32() - t0;
+        g_video.waits++;
+        g_video.wait_us += us;
+        if (us > g_video.wait_max_us) g_video.wait_max_us = us;
+    }
+    if (s_copy_note) {
+        s_copy_note = false;
+        /* A press Doom took before this frame: its key-to-frame time (M4). */
+        input_frame_published(s_copy_published_at);
+#if PICOCALC_DOOM_COPY_CHECK
+        /* Doom's frame must be as it was when the copy began: nothing
+         * drew between the copy's start and this wait. */
+        const uint8_t *src = I_VideoBuffer;
+        unsigned diff = 0, first = 0;
+        for (unsigned k = 0; k < s_check_bytes; k++) {
+            if (s_check_dst[k] != src[k]) {
+                if (diff++ == 0) first = k;
+            }
+        }
+        g_video.checked++;
+        if (diff) {
+            g_video.check_failed++;
+            printf("copy check: tic %d, %u bytes differ, the first at row %u, column %u\n",
+                   gametic, diff, first / FRAMEPOOL_W, first % FRAMEPOOL_W);
+        }
+#endif
+    }
+}
+
+void __wrap_I_FinishUpdate(void) {
+    copy_wait();
+    uint32_t t0 = time_us_32();
+    int i = s_filling;
+    uint8_t *px = uncached(s_pool.pixels[i]);
+
+    /* Upstream's copy (i_video.c), at its scale of 1 and offset 0: in a
+     * level all 240 rows; outside one Doom's 200, to rows 20-219. Its own
+     * blacking of the margins on leaving a level is the margins rule's
+     * first case, so prepare() covers it. */
+    bool level = gamestate == GS_LEVEL;
+    unsigned off = level ? 0u : FRAMEPOOL_MARGIN_ROWS * FRAMEPOOL_W;
+    unsigned bytes = level ? FRAME_BYTES : (FRAMEPOOL_ROWS - 2u * FRAMEPOOL_MARGIN_ROWS) * FRAMEPOOL_W;
+    if (prepare(i)) black_margins(px);
+
+#if PICOCALC_DOOM_COPY_CHECK
+    s_check_dst = px + off;
+    s_check_bytes = bytes;
+#endif
+    s_copy_t0 = time_us_32();
+    s_copy_busy = true;
+    __dmb();
+    dma_channel_set_read_addr((unsigned)s_copy_dma, I_VideoBuffer, false);
+    dma_channel_set_write_addr((unsigned)s_copy_dma, px + off, false);
+    dma_channel_set_trans_count((unsigned)s_copy_dma, bytes / 4u, true);
+
+#if PICOCALC_DOOM_FRAME_HASHES
+    /* A hash build waits here and hashes what the copy wrote; it is never
+     * the one timed. */
+    copy_wait();
+    hash_frame(px);
+#endif
+
+    note_frame();
+    uint32_t us = time_us_32() - t0;
+    g_video.finishes++;
+    g_video.publish_us += us;
+    if (us > g_video.publish_max_us) g_video.publish_max_us = us;
+}
+
+void __real_S_UpdateSounds(mobj_t *listener);
+
+void __wrap_S_UpdateSounds(mobj_t *listener) {
+    __real_S_UpdateSounds(listener);
+    copy_wait();
+}
+
+int __real_wipe_ScreenWipe(int wipeno, int x, int y, int width, int height, int ticks);
+
+int __wrap_wipe_ScreenWipe(int wipeno, int x, int y, int width, int height, int ticks) {
+    copy_wait();
+    return __real_wipe_ScreenWipe(wipeno, x, y, width, height, ticks);
+}
+
+#endif /* strategy C */
 
 /* ---- core 1 ---------------------------------------------------------- */
 

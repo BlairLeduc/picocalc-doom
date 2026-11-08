@@ -402,6 +402,21 @@ void core1_main(void) {
                    battery >= 0 && (battery & 0x80) ? " charging" : "",
                    (unsigned long)sb_error_count(), (unsigned long)log_dropped(),
                    (unsigned long)loops);
+#if PICOCALC_DOOM_VIDEO_BUF_C
+            /* Strategy C's line (M9, §7.3): the copy by DMA, a frame's
+             * worth on average and the longest; core 0's waits for it, the
+             * second's and their time; and a check build's frames compared
+             * and differing, since boot. */
+            uint32_t n_wait = v.waits - last_video.waits;
+            printf("hb %lu copy: dma %lu us (max %lu), waits %lu, %lu us (max %lu), "
+                   "checked %lu, differing %lu\n",
+                   (unsigned long)seconds,
+                   (unsigned long)(n_fin ? (v.dma_us - last_video.dma_us) / n_fin : 0),
+                   (unsigned long)v.dma_max_us, (unsigned long)n_wait,
+                   (unsigned long)(v.wait_us - last_video.wait_us),
+                   (unsigned long)v.wait_max_us, (unsigned long)v.checked,
+                   (unsigned long)v.check_failed);
+#endif
             /* The keyboard's line (M4): pairs read and taken, their wait in
              * the ring, a press to the first frame after Doom took it,
              * releases I_GetEvent() left to the next tic (§9.1), and the

@@ -84,12 +84,21 @@ else()
     endif()
     # Where Doom draws (§7.3): A, upstream's I_VideoBuffer in the zone, in
     # the PSRAM; B, a 76,800-byte buffer in SRAM, the gate's first lever,
-    # which M5 kept (44 frames a second against A's 28). A stays as the
-    # control.
-    set(PICOCALC_DOOM_VIDEO_BUF B CACHE STRING "where Doom draws: A (zone, PSRAM) or B (SRAM)")
-    set_property(CACHE PICOCALC_DOOM_VIDEO_BUF PROPERTY STRINGS A B)
-    if (NOT PICOCALC_DOOM_VIDEO_BUF MATCHES "^[AB]$")
-        message(FATAL_ERROR "PICOCALC_DOOM_VIDEO_BUF is A or B, not ${PICOCALC_DOOM_VIDEO_BUF}")
+    # which M5 kept (44 frames a second against A's 28); C, B with the copy
+    # into the pool by DMA, overlapped with the next tic, which M9 kept (57
+    # against B's 44.5 in demo 1). A and B stay as the controls.
+    set(PICOCALC_DOOM_VIDEO_BUF C CACHE STRING "where Doom draws: A (zone, PSRAM), B (SRAM) or C (SRAM, copied by DMA)")
+    set_property(CACHE PICOCALC_DOOM_VIDEO_BUF PROPERTY STRINGS A B C)
+    if (NOT PICOCALC_DOOM_VIDEO_BUF MATCHES "^[ABC]$")
+        message(FATAL_ERROR "PICOCALC_DOOM_VIDEO_BUF is A, B or C, not ${PICOCALC_DOOM_VIDEO_BUF}")
+    endif()
+    # Strategy C's check (M9): when core 0 waits for the copy, the frame in
+    # the pool compared with Doom's, which must not have changed since the
+    # copy began; a difference is logged. Costs a read of the frame past the
+    # cache each frame, so a check build is never the one timed.
+    option(PICOCALC_DOOM_COPY_CHECK "strategy C: compare each copied frame with Doom's (development)" OFF)
+    if (PICOCALC_DOOM_COPY_CHECK AND NOT PICOCALC_DOOM_VIDEO_BUF STREQUAL "C")
+        message(FATAL_ERROR "PICOCALC_DOOM_COPY_CHECK checks strategy C: it needs PICOCALC_DOOM_VIDEO_BUF=C")
     endif()
     # The gate's second lever (§16 M5): COLORMAP, 8,704 bytes, in SRAM.
     # M5 kept it: The Ultimate Doom's demo 4 needed it to reach 35 fps.
@@ -327,6 +336,8 @@ else()
         PICOCALC_DOOM_FRAME_HASHES=$<BOOL:${PICOCALC_DOOM_FRAME_HASHES}>
         PICOCALC_DOOM_FRAME_DUMP_TIC=${PICOCALC_DOOM_FRAME_DUMP_TIC}
         PICOCALC_DOOM_VIDEO_BUF_B=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>
+        PICOCALC_DOOM_VIDEO_BUF_C=$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>
+        PICOCALC_DOOM_COPY_CHECK=$<BOOL:${PICOCALC_DOOM_COPY_CHECK}>
         PICOCALC_DOOM_COLORMAPS_SRAM=$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>
         PICOCALC_DOOM_FLASH_DIV=${PICOCALC_DOOM_FLASH_DIV}
         PICOCALC_DOOM_FLASH_RXDELAY=${PICOCALC_DOOM_FLASH_RXDELAY}
@@ -388,7 +399,10 @@ else()
         $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=I_PicoSoundSetMusicGenerator>
         $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=OPL_writeReg>
         $<$<BOOL:${PICOCALC_DOOM_OPL_CORE1}>:-Wl,--wrap=OPL_calc_buffer_stereo>
-        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},B>:-Wl,--wrap=I_InitGraphics>
+        $<$<NOT:$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},A>>:-Wl,--wrap=I_InitGraphics>
+        # Strategy C's waits for the copy (picocalc/video_shim.c, §7.3).
+        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>:-Wl,--wrap=S_UpdateSounds>
+        $<$<STREQUAL:${PICOCALC_DOOM_VIDEO_BUF},C>:-Wl,--wrap=wipe_ScreenWipe>
         $<$<BOOL:${PICOCALC_DOOM_COLORMAPS_SRAM}>:-Wl,--wrap=R_Init>
     )
 

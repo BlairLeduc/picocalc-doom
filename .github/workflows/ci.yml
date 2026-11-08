@@ -86,6 +86,17 @@ jobs:
             -DPICOCALC_DOOM_OPL_ASM=ON -DPICOCALC_DOOM_AUDIO_STALL=30
           cmake --build build/pico-levers -j "$(nproc)"
 
+      # Strategy B, the control for M9's copy by DMA (§7.3), and the
+      # default strategy C with its check (PICOCALC_DOOM_COPY_CHECK).
+      - name: Build strategy B and strategy C's check
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: |
+          cmake -S . -B build/pico-b -DCMAKE_BUILD_TYPE=Release -DPICOCALC_DOOM_VIDEO_BUF=B
+          cmake --build build/pico-b -j "$(nproc)"
+          cmake -S . -B build/pico-check -DCMAKE_BUILD_TYPE=Release -DPICOCALC_DOOM_COPY_CHECK=ON
+          cmake --build build/pico-check -j "$(nproc)"
+
       - uses: actions/upload-artifact@v4
         with:
           name: picocalc-doom-uf2
