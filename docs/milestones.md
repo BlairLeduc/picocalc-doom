@@ -26,7 +26,7 @@ there and no `picocalc.ini` on its card.
 | A change in Doom's options menu survives a quit and a power cycle | **passed**: the screen made one step smaller (`-`), F10 `y`, off, on: `screenblocks 9`, from 10, read back from `default.cfg` |
 | F10 then `y` returns to the shell when started by it | **passed**, the owner, on the Plus 2, twice (Doom II and Doom; the at-exit list in 27 and 29 ms); Esc in the WAD list too, four times |
 | F10 then `y` powers off when installed without the loader | **passed**: "exit: power off in 6 s, asked for 5 ms after the key"; the PicoCalc went off |
-| A save after starting from the shell carries the shell's local date and time | **passed**: the owner saved in Doom started from the shell and read the file's date and time on the card, correct, and again in Doom II, in `doom2.wad/`, and in TNT: Evilution, in `tnt.wad/`; the port had the shell's clock, 2026-11-07 18:29:45, UTC−5 |
+| A save after starting from the shell carries the shell's local date and time | **passed**: the owner saved in Doom started from the shell and read the file's date and time on the card, correct, and again in Doom II, in `doom2.wad/`, in TNT: Evilution, in `tnt.wad/`, and in Plutonia, in `plutonia.wad/`; the port had the shell's clock, 2026-11-07 18:29:45, UTC−5 |
 | A save after a cold power-on without the shell carries the fallback | **not yet read**: the save above was made with "the shell's clock is not set"; its date on the card, FatFs's 2022-01-01, is to be read on a computer |
 | `picocalc-doom -file <pwad> -warp 1 1` from the shell starts that map with that PWAD | **passed for the PWAD**, the owner: `-iwad doom.wad -file nerve.wad` from `/doom` gave `-iwad /doom/doom.wad -file /doom/nerve.wad`, and Doom added both (`nerve.wad` 117 lumps in 20 ms) and started. Then with `-warp`, the owner: it started the map asked for. Earlier, the words arrived (`-iwad /doom/doom2.wad` from `/doom` started Doom II); `-iwad doom2.wad` from `/home` failed ("IWAD file '/home/doom2.wad' not found!"), fixed since: a file not found from the user's directory goes as typed, for Doom to find in `/doom` (design.md §13.4); the same command from `/home` on the fixed build then worked, and a like command in the shell's DOS flavour (`/` switches), the owner |
 | **Measured**: save write time | **85 ms** on the Plus 2 W, **59 ms** on the Plus 2, from the temporary file's name to the rename done |
@@ -99,8 +99,8 @@ In play after the load: heap 4,580 of 8,676 B; core 0's stack 1,960 of
 ### Not checked
 
 - The fallback date on the Plus 2 W's save, read on a computer.
-- Saves in Plutonia and the other IWADs (Doom's, Doom II's and TNT's were
-  made).
+- Saves in the IWADs not on the card (shareware, Freedoom, Chex Quest,
+  HACX).
 - The release build on the device.
 - The "Doom has quit." page (no shell and no power-off).
 
