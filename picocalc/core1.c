@@ -16,13 +16,15 @@
 
 #include "audio_shim.h"
 #include "board.h"
-#include "opl_core1.h"
+#include "counters.h"
 #include "framepool.h"
 #include "input.h"
 #include "kbd.h"
 #include "lcd.h"
 #include "log.h"
+#include "opl_core1.h"
 #include "page.h"
+#include "picocalc_doom_version.h"
 #include "southbridge.h"
 #include "status.h"
 #include "video.h"
@@ -33,6 +35,14 @@
 #define HEARTBEAT_US  1000000u
 
 core1_bringup_t g_core1 = { .sb_version = -1 };
+
+/* At a fixed symbol, for SWD (counters.h, §14.2); `used`, since nothing
+ * in the image reads it. The magic is set once core 1 runs. */
+__attribute__((used)) volatile counters_t picocalc_doom_counters = {
+    .layout = COUNTERS_LAYOUT,
+    .battery = -1,
+    .version = PICOCALC_DOOM_VERSION,
+};
 
 volatile uint32_t g_core0_sleep_us;
 volatile uint32_t g_core0_frames;
@@ -268,45 +278,6 @@ uint32_t core1_stack_size(void) {
     return (uint32_t)((uintptr_t)&__StackOneTop - (uintptr_t)&__StackOneBottom);
 }
 
-#if PICOCALC_DOOM_TEST_PATTERN
-/* The corner-coded test pattern (EL §13.3, hardware-notes.md §10):
- * orientation, colour order and all four edges, by eye. Drawn at boot in
- * a build that asks for it, M1's bring-up and the default until M3
- * presents frames.
- *
- *   - red square top left, green top right, blue bottom left, white
- *     bottom right, 32 pixels each;
- *   - a one-pixel white border round the whole panel;
- *   - in the picture's 240 rows: eight colour bars, white, yellow, cyan,
- *     green, magenta, red, blue, black, 40 pixels each, over a grey ramp
- *     of 32 steps in the last 40 rows, black on the left.
- */
-static void test_pattern(void) {
-    static const uint16_t bars[8] = {
-        RGB565(255, 255, 255), RGB565(255, 255, 0), RGB565(0, 255, 255), RGB565(0, 255, 0),
-        RGB565(255, 0, 255),   RGB565(255, 0, 0),   RGB565(0, 0, 255),   RGB565(0, 0, 0),
-    };
-    const uint16_t white = RGB565(255, 255, 255);
-    const unsigned w = LCD_PANEL_W, h = LCD_PANEL_H, sq = 32u;
-
-    for (unsigned i = 0; i < 8u; i++) lcd_fill(i * 40u, FRAME_Y, 40u, FRAME_H - 40u, bars[i]);
-    for (unsigned i = 0; i < 32u; i++) {
-        unsigned v = i * 255u / 31u;
-        lcd_fill(i * 10u, FRAME_Y + FRAME_H - 40u, 10u, 40u, RGB565(v, v, v));
-    }
-
-    lcd_fill(0, 0, w, 1, white);
-    lcd_fill(0, h - 1u, w, 1, white);
-    lcd_fill(0, 0, 1, h, white);
-    lcd_fill(w - 1u, 0, 1, h, white);
-
-    lcd_fill(0, 0, sq, sq, RGB565(255, 0, 0));
-    lcd_fill(w - sq, 0, sq, sq, RGB565(0, 255, 0));
-    lcd_fill(0, h - sq, sq, sq, RGB565(0, 0, 255));
-    lcd_fill(w - sq, h - sq, sq, sq, white);
-}
-#endif
-
 void core1_main(void) {
     /* 1. The southbridge first: a dead bus is the first thing to know
      *    about (hardware-notes.md §10). */
@@ -319,15 +290,10 @@ void core1_main(void) {
      * something other than 0. */
     g_core1.sb_power_off = sb_read(SB_REG_OFF, r) == SB_OK && r[1] != 0;
 
-    /* 2. The LCD, cleared before DISPON, then the pattern if asked for. */
+    /* 2. The LCD, cleared before DISPON. */
     t0 = time_us_32();
     g_core1.spi_hz = lcd_init();
     g_core1.lcd_us = time_us_32() - t0;
-#if PICOCALC_DOOM_TEST_PATTERN
-    t0 = time_us_32();
-    test_pattern();
-    g_core1.pattern_us = time_us_32() - t0;
-#endif
 
     board_temp_init();
     s_row_dma = dma_claim_unused_channel(true);
@@ -337,6 +303,7 @@ void core1_main(void) {
     dma_sniffer_enable((unsigned)s_row_dma, DMA_SNIFF_CTRL_CALC_VALUE_CRC32, false);
 #endif
 
+    picocalc_doom_counters.magic = COUNTERS_MAGIC;
     __dmb();
     g_core1.ready = true;
 
@@ -400,14 +367,12 @@ void core1_main(void) {
         }
         if (frame >= 0) {
             if (!bands_cleared) {
-                /* The bands are black (§7.5): the test pattern's
-                 * corners and border, if drawn, go with the first
-                 * frame. */
+                /* The bands are black (§7.5). */
                 lcd_fill(0, 0, LCD_PANEL_W, FRAME_Y, 0);
                 lcd_fill(0, FRAME_Y + FRAME_H, LCD_PANEL_W, LCD_PANEL_H - FRAME_Y - FRAME_H, 0);
                 bands_cleared = true;
 #if PICOCALC_DOOM_DIRTY_ROWS
-                /* A page, or the test pattern, covered the frame's rows. */
+                /* A page covered the frame's rows. */
                 s_rows_valid = false;
 #endif
             }
@@ -458,6 +423,37 @@ void core1_main(void) {
             input_stats_t in = g_input;
             uint32_t n_taken = in.taken - last_input.taken;
             uint32_t n_frame = in.frame_n - last_input.frame_n;
+            audio_stats_t au = g_audio;
+            /* The block the release build is watched by (counters.h). */
+            volatile counters_t *c = &picocalc_doom_counters;
+            c->seconds = seconds;
+            c->busy = busy;
+            if (busy > c->busy_max) c->busy_max = busy;
+            c->rendered = frames;
+            c->published = pub;
+            c->presents = ps.presents;
+            c->dropped = drop;
+            c->present_max_us = ps.max_us;
+            c->late = au.late;
+            c->underruns = au.underruns;
+            c->music_late = au.music_late;
+#if PICOCALC_DOOM_OPL_CORE1
+            c->opl_dropped = g_opl_core1.dropped;
+#endif
+            c->keys = in.taken;
+            c->ring_full = kbd_overflows();
+            c->unknown = in.unknown;
+            c->stray = in.stray;
+            c->i2c_errors = sb_error_count();
+            c->log_dropped = log_dropped();
+            c->core0_stack = g_core0_stack;
+            c->core1_stack = core1_stack_used();
+            c->heap = g_core0_heap;
+            c->tic = g_core0_tic;
+            c->leveltime = g_core0_leveltime;
+            c->gamestate = g_core0_gamestate;
+            c->temp_c = temp_c;
+            c->battery = battery;
             printf("hb %lu: core 0 busy %lu.%lu%%, frames %lu, published %lu, presented %lu, "
                    "dropped %lu; copy %lu us (max %lu), publish %lu us (max %lu), "
                    "present %lu us (max %lu), margins %lu; stacks: core 0 %lu of %lu B, "
@@ -522,7 +518,6 @@ void core1_main(void) {
              * slots played and those its ring was empty for (in samples, the
              * slot's frames), the interrupt's time, and mixing's, in
              * I_UpdateSound(), each as a share of core 0's second. */
-            audio_stats_t au = g_audio;
             uint32_t slot = audio_slot_frames();
             uint32_t n_played = au.played - last_audio.played;
             uint32_t irq_share = (au.irq_us - last_audio.irq_us) / (HEARTBEAT_US / 1000u);

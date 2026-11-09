@@ -1435,7 +1435,12 @@ As Quest §14.1 (D5; HW §2.7, EL §13.1):
   `psram_malloc()` prints every allocation of 64 KB or more. UART keys on.
 - **Release**: no UART, no stdio, GP2/GP3 free, upstream quiet. The counter
   block at a fixed symbol, with a magic word and layout number, read over
-  SWD without halting (HW §2.7) by `scripts/counters.sh`, as Quest §14.2.
+  SWD without halting (HW §2.7) by `scripts/counters.sh`, as Quest §14.2
+  (M10): `picocalc_doom_counters` (`picocalc/counters.h`), filled by core
+  1's heartbeat in both builds, with what the soak checks (frames, the game
+  and level tics, the failure counters, keys, stacks, battery) and the
+  version. `counters.sh --watch 30` is the release soak; its check is
+  `soak_check.sh`'s, with level loads seen as the level tic going back.
 
 ### 14.3 Heartbeat
 
@@ -1510,9 +1515,13 @@ not a CTest, since it needs WADs, which never go in the repository:
   list's header carries the MD5). **The same list from the device** shows
   the engine on the board is the host's (EL §13.3), and it is the check that
   catches a marginal PSRAM or flash timing, which corrupts quietly
-  (HW §3). A build with `PICOCALC_DOOM_FRAME_HASHES=ON` logs the list as
-  `fh TIC CRC` lines, and `scripts/host_engine.sh compare` reads them from
-  the capture; `PICOCALC_DOOM_FRAME_DUMP_TIC` adds one tic's frame as hex
+  (HW §3). Any build hashes when Doom's arguments hold `-framehashes` (M10), so
+  the image that ships can be checked: it logs the list as `fh TIC CRC`
+  lines, which `scripts/host_engine.sh compare` reads from a capture, and
+  keeps it in the PSRAM, where the counter block points and
+  `scripts/counters.sh --hashes` reads it over SWD and compares. Without
+  the argument the cost is one test a frame. A build with
+  `PICOCALC_DOOM_FRAME_HASHES=ON` hashes without it; `PICOCALC_DOOM_FRAME_DUMP_TIC` adds one tic's frame as hex
   rows, to set beside the host engine's `-hostshot TIC FILE.raw`.
 - **Zone low-water**, warping to every map of every IWAD to hand and
   running a minute of tics in each (§12.2), and the WAD directory's size
@@ -1744,7 +1753,8 @@ SRAM tier in its own build directory, symbols checked (HW §9.8).
 Then a **30-minute soak** on battery, a level playing with keys typed over
 the UART throughout, a script checking the log: one boot, heartbeats
 throughout, late refills, I²C errors and dropped log lines zero, underruns
-only at level loads, and the game visibly advancing (EL §11.5): frames
+and OPL late halves only at level loads (the owner's word, 2026-11-08, M10:
+the release soak's three late halves fell at loads, beside the underruns), and the game visibly advancing (EL §11.5): frames
 published rising in every heartbeat, and the tic count with them.
 
 **Done when** the soak passes and every lever is recorded as kept or
@@ -1758,6 +1768,8 @@ with audio at screen size 10; `milestones.md`.)
 
 - Release build (§14.2); its own 30-minute soak with counters read over
   SWD and keys pressed by hand (EL §11.5).
+  (Run 2026-11-08: one boot, 31 minutes on battery, every check met but
+  keys in minutes 9 and 14, when the owner paused; `milestones.md`.)
 - Checked on a Plus 2 and a Plus 2 W if both are to hand; otherwise say
   which.
 - The `-timedemo` frame hashes equal M2's on the release image.

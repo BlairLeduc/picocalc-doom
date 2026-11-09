@@ -29,8 +29,8 @@
  * buffer claimed as DG_ScreenBuffer. */
 void video_init(void);
 
-/* Core 0: the last tic's frame hash out to the log, in a hash build
- * (M5, §15); nothing otherwise. Called when Doom stops. */
+/* Core 0: the last tic's frame hash to the log and the list, when frames
+ * are hashed (M5, M10, §15); nothing otherwise. Called when Doom stops. */
 void video_hash_flush(void);
 
 /* Core 1: the newest published frame, or -1; then give it back. */

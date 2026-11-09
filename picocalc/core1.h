@@ -1,8 +1,7 @@
 /* core1.h — core 1's loop: the presenter, the pages, the southbridge
  * and the log (design.md §6.1).
  *
- * Bring-up of the southbridge and the LCD, the corner-coded test pattern
- * in a build that asks for it (hardware-notes.md §10, EL §13.3), the
+ * Bring-up of the southbridge and the LCD (hardware-notes.md §10), the
  * presenter (M3, §7.4), the pages (§13.1), the keyboard's poll (M4,
  * §9.1), the log pump and the heartbeat (§14.3).
  *
@@ -26,7 +25,6 @@ typedef struct {
     bool          sb_power_off;  /* the southbridge can power off (§13.3) */
     uint32_t      spi_hz;        /* the LCD's, as configured             */
     uint32_t      lcd_us;        /* lcd_init, reset to DISPON            */
-    uint32_t      pattern_us;    /* drawing the test pattern             */
 } core1_bringup_t;
 
 extern core1_bringup_t g_core1;

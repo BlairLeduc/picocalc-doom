@@ -4,6 +4,71 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M10: release
+
+**In progress.** **2026-11-08**, on a Pimoroni Pico Plus 2 W (RP2350B rev
+2) in a PicoCalc, flashed over SWD with `scripts/flash.sh`; Arm GCC
+15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V. The card as M9 left it
+(`iwad = doom.wad`, `args = -skill 4`, screen size 10). Built, run and
+read by Claude; the owner played the release soak.
+
+### Done when
+
+| Check | Result |
+|---|---|
+| The release UF2 boots from UF2 Loader | not yet (the owner) |
+| The release UF2 boots from BOOTSEL | not yet (the owner) |
+| An episode's first level plays with sound, on the release image | played with sound in the soak, flashed over SWD; from the loader and BOOTSEL not yet |
+| The documents describe what shipped | README, LICENSE, `build_release.sh` written; the record to finish |
+
+### Checked so far
+
+| Check | Result |
+|---|---|
+| The release image runs, read over SWD (`scripts/counters.sh`) | **passed**: the counter block found by its symbol, 156 B in SRAM; 135 s into The Ultimate Doom's attract loop, 7,973 frames drawn and published, 7,972 presented; late refills, underruns, I²C errors and dropped OPL writes 0; core 0's stack 2,024 B, core 1's 1,092 B; image 501 KB; no partition (flashed over SWD) |
+| The release image says nothing on UART0 | **passed**: the capture holds the development image's last lines before the flash, then nothing |
+| `-timedemo demo1` frame hashes from the release configuration, read over SWD (`counters.sh --hashes`) | **same 1,702, different 0, skipped 7** (the 7 of M5), missing 0. The image is the release build with `PICOCALC_DOOM_ARGS="-iwad doom.wad -timedemo demo1 -framehashes"` built in; the shipped image with the same in `picocalc.ini` is still to run (the owner's card) |
+| `counters.sh --watch` on the release image, 1 minute from the attract loop | the check runs and fails only for want of keys, as it should |
+| **The shipped image's own frame hashes**, `-timedemo demo1 -framehashes` in the card's `picocalc.ini` (the owner), read over SWD | **same 1,702, different 0, skipped 7**, missing 0: the release build of `09352c1` from a clean tree, flashed over SWD; demo 1 to its end, 1,753 frames drawn |
+| **The release soak**, `scripts/counters.sh --watch 31`, keys by hand, on battery | **passed, but for the owner's pauses**: one boot (the owner switched on 9 s before the first read); 186 reads over 30.8 minutes of play in The Ultimate Doom; 7,636 keys taken; late refills, I²C errors, keys lost, unknown and stray, dropped OPL writes **0**; 3 level loads (one through the intermission), with 36 underrun slots and 3 OPL late halves at them and none elsewhere; frames published, the game tic and the level tic rising in every read; drawn 66.0 and presented 57.0 a second; core 0's stack 2,016 B, core 1's 1,092 B, heap 4,544 B; 22 to 28 °C; **on battery throughout**, 91 %. The check failed minutes 9 and 14 for no keys: the owner paused in play (8.2–10.2 and 13.2–14.5 min), confirmed by the owner. The image said `5d8a6cb-dirty`: built before the first M10 commit, its firmware sources that commit's (`out/m10/release-soak.log`) |
+| Host tests; `check_sources.sh` | 12 of 12; 95 compiled, 9 excluded, matching upstream |
+
+### Found
+
+- **One OPL late half at boot on the release image**, every boot (three of
+  three): between 5 and 7 s of uptime, as Doom's first frames are
+  published and the title music starts; none after, through the attract
+  loop. About 10 ms of silence before the music has begun. M9's
+  development captures have none; the development build's log slows core
+  0's start, which is the likeliest difference. `counters.sh` counts the
+  failure counters from the first read in play, as `soak_check.sh` does,
+  and names any count from before.
+- **OPL late halves come at level loads**, with the underruns: the release
+  soak had one at each of its three level changes (a load at 2.3 min; into
+  the intermission at 18.3 and the next level at 18.7), and none in play.
+  Core 0 reading the card stalls the music's hand-over as it does the
+  mix. M9's soaks never changed level. With the owner's word the soak
+  allows them where it allows underruns: `counters.sh` and `soak_check.sh`
+  judge both by their rise, within a read (or 10 s) of a level load or a
+  change of game state; M9's soak at screen size 10 still passes.
+- **Frame hashes are a run-time switch** (`-framehashes`), so the image
+  that ships can be checked; the list is read over SWD from the PSRAM
+  through the cached alias (hardware-notes.md §2.7).
+- **The counter block can be read torn** (hardware-notes.md §2.7);
+  `counters.sh --watch` takes each read twice until two agree.
+- **M1's test pattern is gone**, at the owner's word: `build/pico-release`'s
+  cache had kept `PICOCALC_DOOM_TEST_PATTERN=ON` from an earlier configure,
+  so the image soaked drew it at boot until Doom's first frame (every
+  other option at its default, checked against `CMakeLists.txt`).
+  `build_release.sh` configures afresh and would not have; the pattern and
+  its option are removed, so no build can.
+- The root `LICENSE` was a copy of upstream's notice; it is now the GPL-2.0
+  text, with upstream's notice in the release zip's `upstream/`.
+
+### Not checked
+
+- The release image from UF2 Loader and from BOOTSEL; the Plus 2.
+
 ## M9: performance pass and soak
 
 **2026-11-07**, on a Pimoroni Pico Plus 2 W (RP2350B rev 2) in a PicoCalc,

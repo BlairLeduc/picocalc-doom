@@ -67,9 +67,6 @@ else()
     # (§14.2): stdio into the log ring, which core 1 drains to UART0
     # (picocalc/log.c).
     option(PICOCALC_DOOM_UART "stdio on UART0, GP2/GP3 (development)" ON)
-    # ON draws M1's corner-coded test pattern at boot (picocalc/core1.c),
-    # until Doom's first frame; OFF, the panel stays black until then.
-    option(PICOCALC_DOOM_TEST_PATTERN "draw the test pattern at boot" OFF)
     # Doom arguments fixed at build time (§14.1), before any other, such
     # as "-iwad doom.wad -timedemo demo1". Each in its own build directory.
     set(PICOCALC_DOOM_ARGS "" CACHE STRING "Doom arguments built in, for scripted runs")
@@ -348,7 +345,6 @@ else()
         PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK=1
         # UART0 at 115200 8-N-1 on GP2/GP3, as the shell's (D5).
         PICOCALC_DOOM_UART=$<BOOL:${PICOCALC_DOOM_UART}>
-        PICOCALC_DOOM_TEST_PATTERN=$<BOOL:${PICOCALC_DOOM_TEST_PATTERN}>
         PICOCALC_DOOM_ARGS="${PICOCALC_DOOM_ARGS}"
         PICOCALC_DOOM_FRAME_HASHES=$<BOOL:${PICOCALC_DOOM_FRAME_HASHES}>
         PICOCALC_DOOM_FRAME_DUMP_TIC=${PICOCALC_DOOM_FRAME_DUMP_TIC}
