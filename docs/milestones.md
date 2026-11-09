@@ -6,20 +6,26 @@ and done-when criteria; this file keeps the full record.
 
 ## M10: release
 
-**In progress.** **2026-11-08**, on a Pimoroni Pico Plus 2 W (RP2350B rev
+**2026-11-08**, on a Pimoroni Pico Plus 2 W (RP2350B rev
 2) in a PicoCalc, flashed over SWD with `scripts/flash.sh`; Arm GCC
 15.2.Rel1, Pico SDK 2.3.1; 300 MHz at 1.20 V. The card as M9 left it
 (`iwad = doom.wad`, `args = -skill 4`, screen size 10). Built, run and
-read by Claude; the owner played the release soak.
+read by Claude; the owner played the release soak and booted the v1.0
+image, from UF2 Loader on a Pico Plus 2 and from BOOTSEL on the Plus 2 W.
+
+**v1.0** is `main` at `4b8fc7a`, tagged `v1.0`, built by
+`scripts/build_release.sh 1.0`: `dist/picocalc-doom-v1.0-pico-plus2.uf2`
+(1,026,048 B; text 515,772 B, as the image whose hashes were read, whose
+firmware sources are the same).
 
 ### Done when
 
 | Check | Result |
 |---|---|
-| The release UF2 boots from UF2 Loader | not yet (the owner) |
-| The release UF2 boots from BOOTSEL | not yet (the owner) |
-| An episode's first level plays with sound, on the release image | played with sound in the soak, flashed over SWD; from the loader and BOOTSEL not yet |
-| The documents describe what shipped | README, LICENSE, `build_release.sh` written; the record to finish |
+| The release UF2 boots from UF2 Loader | **passed**, the owner, on a **Pico Plus 2**: the v1.0 UF2 from the card's `pico2-apps`, started from the shell, played, and Quit went back to the shell |
+| The release UF2 boots from BOOTSEL | **passed**, the owner, on the **Plus 2 W**: copied in BOOTSEL, played, and Quit switched the PicoCalc off |
+| An episode's first level plays with sound, on the release image | **passed**: E1M1 and on with sound in the release soak (31 minutes, the release build flashed over SWD); the v1.0 image played from the loader and from BOOTSEL |
+| The documents describe what shipped | **passed**: README (the card, keys, settings, arguments, the shell, what runs, credits, licence), LICENSE, the release zip with upstream's licence texts, this record |
 
 ### Checked so far
 
@@ -67,7 +73,13 @@ read by Claude; the owner played the release soak.
 
 ### Not checked
 
-- The release image from UF2 Loader and from BOOTSEL; the Plus 2.
+- The Pico LiPo 2 and Pico LiPo 2 XL W, which the README lists: the owner
+  has neither. Both are RP2350 boards with 16 MB of flash and 8 MB of
+  PSRAM, by their specifications; that the PSRAM is on the chip select the
+  port finds (GPIO47 on an RP2350B) has not been read from their
+  schematics or seen running.
+- The v1.0 image over a 30-minute soak (the release soak ran the same
+  firmware sources, built before the tag).
 
 ## M9: performance pass and soak
 

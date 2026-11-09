@@ -1781,6 +1781,9 @@ with audio at screen size 10; `milestones.md`.)
 **Done when** the release UF2 boots from UF2 Loader and from BOOTSEL, an
 episode's first level plays with sound, and the documents describe what
 shipped.
+(Met 2026-11-08: v1.0, tagged on `main`, from UF2 Loader on a Plus 2 back
+to the shell, from BOOTSEL on a Plus 2 W to power off; the shipped image's
+frame hashes the host's; `milestones.md`.)
 
 ---
 
