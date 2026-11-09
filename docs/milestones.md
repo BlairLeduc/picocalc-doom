@@ -29,6 +29,7 @@ read by Claude; the owner played the release soak.
 | The release image says nothing on UART0 | **passed**: the capture holds the development image's last lines before the flash, then nothing |
 | `-timedemo demo1` frame hashes from the release configuration, read over SWD (`counters.sh --hashes`) | **same 1,702, different 0, skipped 7** (the 7 of M5), missing 0. The image is the release build with `PICOCALC_DOOM_ARGS="-iwad doom.wad -timedemo demo1 -framehashes"` built in; the shipped image with the same in `picocalc.ini` is still to run (the owner's card) |
 | `counters.sh --watch` on the release image, 1 minute from the attract loop | the check runs and fails only for want of keys, as it should |
+| **The shipped image's own frame hashes**, `-timedemo demo1 -framehashes` in the card's `picocalc.ini` (the owner), read over SWD | **same 1,702, different 0, skipped 7**, missing 0: the release build of `09352c1` from a clean tree, flashed over SWD; demo 1 to its end, 1,753 frames drawn |
 | **The release soak**, `scripts/counters.sh --watch 31`, keys by hand, on battery | **passed, but for the owner's pauses**: one boot (the owner switched on 9 s before the first read); 186 reads over 30.8 minutes of play in The Ultimate Doom; 7,636 keys taken; late refills, I²C errors, keys lost, unknown and stray, dropped OPL writes **0**; 3 level loads (one through the intermission), with 36 underrun slots and 3 OPL late halves at them and none elsewhere; frames published, the game tic and the level tic rising in every read; drawn 66.0 and presented 57.0 a second; core 0's stack 2,016 B, core 1's 1,092 B, heap 4,544 B; 22 to 28 °C; **on battery throughout**, 91 %. The check failed minutes 9 and 14 for no keys: the owner paused in play (8.2–10.2 and 13.2–14.5 min), confirmed by the owner. The image said `5d8a6cb-dirty`: built before the first M10 commit, its firmware sources that commit's (`out/m10/release-soak.log`) |
 | Host tests; `check_sources.sh` | 12 of 12; 95 compiled, 9 excluded, matching upstream |
 
@@ -67,8 +68,6 @@ read by Claude; the owner played the release soak.
 ### Not checked
 
 - The release image from UF2 Loader and from BOOTSEL; the Plus 2.
-- The shipped image's own frame hashes (`args = -skill 4 -timedemo demo1
-  -framehashes` on the card).
 
 ## M9: performance pass and soak
 
