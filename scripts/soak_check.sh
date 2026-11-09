@@ -13,10 +13,11 @@
 #   - heartbeats throughout: every second from the first to the last, at
 #     least MINUTES of them;
 #   - the failure counters zero in every heartbeat: late refills, I2C
-#     errors, log lines dropped, keys lost to a full ring, OPL slots late
-#     or writes dropped;
-#   - underruns only at level loads: none but within 10 s after a
-#     "level:" line;
+#     errors, log lines dropped, keys lost to a full ring, OPL writes
+#     dropped;
+#   - underruns and OPL late halves only at level loads: none but within
+#     10 s after a "level:" line or a change of game state (into the
+#     intermission, say), where core 0 reads the card (M10);
 #   - the game visibly advancing: frames published in every heartbeat, the
 #     game tic rising in every one, and the level tic in every one in a
 #     level (state 0), so the game was running, not only drawing;
@@ -62,6 +63,7 @@ function fail(what) { failures[++nfail] = what }
         fail("hb " s ": level tic did not rise in a level (" lt ")")
     if (field($0, "i2c errors") + 0 != 0) fail("hb " s ": i2c errors " field($0, "i2c errors"))
     if (field($0, "log dropped") + 0 != 0) fail("hb " s ": log dropped " field($0, "log dropped"))
+    if (n > 1 && st + 0 != prev_st + 0) { nlevel++; level_at[nlevel] = s; nstate++ }
     prev_tic = tic; prev_lt = lt; prev_st = st
     frames += field($0, "frames"); presented += field($0, "presented")
     b = $0; sub(/.*busy /, "", b); sub(/%.*/, "", b); busy += b
@@ -90,7 +92,15 @@ started && /^hb [0-9]+ audio: / {
 }
 started && /^hb [0-9]+ opl: / {
     s = $2 + 0
-    if (field($0, "late halves") + 0 != 0) fail("hb " s ": OPL late halves " field($0, "late halves"))
+    # Cumulative since boot: judged by its rise, as the underruns are.
+    lh = field($0, "late halves") + 0
+    if (!opl_seen) { opl_seen = 1; prev_lh = lh; if (lh) late_before = lh }
+    if (lh > prev_lh) {
+        ok = 0
+        for (i = 1; i <= nlevel; i++) if (s >= level_at[i] && s <= level_at[i] + 10) ok = 1
+        if (ok) late_load += lh - prev_lh; else fail("hb " s ": " lh - prev_lh " OPL late halves away from a level load")
+    }
+    prev_lh = lh
     if (field($0, "dropped") + 0 != 0) fail("hb " s ": OPL writes dropped " field($0, "dropped"))
 }
 END {
@@ -101,7 +111,8 @@ END {
     if (n < minutes * 60) fail("only " n " heartbeats in play, not " minutes * 60)
     full = int(n / 60)
     for (m = 0; m < full; m++) if (!(m in keymin)) fail("minute " m + 1 ": no key taken")
-    printf "keys taken: %d; level loads: %d; underrun slots at level loads: %d\n", keys, nlevel, under_load
+    printf "keys taken: %d; level loads and changes of state: %d; at them, underrun slots %d, OPL late halves %d\n", keys, nlevel, under_load, late_load
+    if (late_before) printf "OPL late halves before play: %d\n", late_before
     printf "drawn %.1f a second, presented %.1f; core 0 busy %.1f%%; temperature %d-%d C; battery %s%% to %s%%\n",
         frames / n, presented / n, busy / n, tmin, tmax, bat0, bat1
     printf "heap %d of %d B; stacks: core 0 %d B, core 1 %d B\n", heap, heapsize, st0, st1

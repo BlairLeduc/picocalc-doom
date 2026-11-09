@@ -29,9 +29,9 @@
 # asked for: every read finds the block; its seconds never go back (one
 # boot) and keep pace with the wall clock; frames published and the game
 # tic rising between every two reads, and the level tic too while in a
-# level; keys taken in every minute; late refills, I2C errors, keys lost,
-# OPL late halves and dropped writes not rising (any from before play is
-# shown); underruns only between two
+# level; keys taken in every minute; late refills, I2C errors, keys lost
+# and dropped OPL writes not rising (any from before play is shown);
+# underruns and OPL late halves only between two
 # reads with a level load in them (the level tic gone back, or out of a
 # level). Says whether the battery ran it throughout. Exits 1 if it fails.
 set -euo pipefail
@@ -134,7 +134,7 @@ if start is None:
     sys.exit(1)
 play = reads[start:]
 
-loads = under_at_load = 0
+loads = under_at_load = late_at_load = 0
 for (ms0, a), (ms1, b) in zip(play, play[1:]):
     wall = (ms1 - ms0) / 1000.0
     up = b["seconds"] - a["seconds"]
@@ -158,6 +158,11 @@ for (ms0, a), (ms1, b) in zip(play, play[1:]):
         under_at_load += u
     elif u:
         problems.append("%d slots underrun away from a level load at %s" % (u, at))
+    m = b["music_late"] - a["music_late"]
+    if m and load:
+        late_at_load += m
+    elif m:
+        problems.append("%d OPL late halves away from a level load at %s" % (m, at))
 
 first, last = play[0][1], play[-1][1]
 span = (play[-1][0] - play[0][0]) / 60000.0
@@ -172,22 +177,22 @@ for m in range(int(span)):
         problems.append("no keys taken in minute %d" % (m + 1))
 # The failure counters must not rise in play; any count from before it
 # (the start of the title music) is shown, not failed.
-FAILURES = ("late", "i2c_errors", "ring_full", "music_late", "opl_dropped", "log_dropped")
+FAILURES = ("late", "i2c_errors", "ring_full", "opl_dropped", "log_dropped")
 for k in FAILURES:
     if last[k] != first[k]:
         problems.append("%s %d in play" % (k.replace("_", " "), last[k] - first[k]))
-before = ["%s %d" % (k.replace("_", " "), first[k]) for k in FAILURES if first[k]]
+before = ["%s %d" % (k.replace("_", " "), first[k]) for k in FAILURES + ("music_late",) if first[k]]
 charging = sum(1 for _, c in play if c["battery"] < 0 or c["battery"] & 0x80)
 
 print("first: " + show(first))
 print("last:  " + show(last))
 s = max(1, last["seconds"] - first["seconds"])
 print("%d reads over %.1f minutes of play; frames drawn %.1f and presented %.1f a second; "
-      "keys %d; level loads %d, underrun slots at them %d; core 0 stack max %d B; "
-      "temp %d C at the end" % (
+      "keys %d; level loads %d, at loads underrun slots %d and OPL late halves %d; "
+      "core 0 stack max %d B; temp %d C at the end" % (
       len(play), span, (last["rendered"] - first["rendered"]) / s,
       (last["presents"] - first["presents"]) / s, last["keys"] - first["keys"],
-      loads, under_at_load, last["core0_stack"], last["temp_c"]))
+      loads, under_at_load, late_at_load, last["core0_stack"], last["temp_c"]))
 print("battery %s to %s; %s" % (battery(first), battery(last),
       "on battery throughout" if charging == 0 else
       "%d of %d reads charging or unknown" % (charging, len(play))))

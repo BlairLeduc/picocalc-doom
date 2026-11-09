@@ -12,10 +12,11 @@ Doom's data is not included. Use the IWAD from your own copy of Doom
 
 ## What you need
 
-- A PicoCalc with a **Pimoroni Pico Plus 2** or **Pico Plus 2 W** installed.
-  Doom needs the Plus 2's 8 MB of PSRAM, so it will not run on a Pico,
-  Pico 2 or Pico 2 W. The one image works on both Plus 2 boards; it does
-  not use the radio.
+- A PicoCalc with a **Pimoroni Pico Plus 2**, **Pico Plus 2 W**,
+  **Pico LiPo 2**, **Pico LiPo 2 XL W** installed.
+  Doom needs 8 MB of PSRAM, so it will not run on a Pico 2 or Pico 2 W.
+  This one image also works on the Plus 2 W and LiPo 2 XL W boards;
+  it does not use the radio.
 - An SD card, FAT32 or exFAT, with a `doom` folder holding your WADs.
 - Optionally, [UF2 Loader](https://github.com/pelrun/uf2loader) and the
   [PicoCalc shell](https://github.com/BlairLeduc/picocalc-shell), to start it
@@ -31,7 +32,7 @@ Either:
   choose it from the loader's menu or the shell. Quitting Doom then goes
   back to the shell. This is the way to install on a board that already has
   the loader.
-- **From BOOTSEL, with no loader**: hold BOOTSEL on the Plus 2 while
+- **From BOOTSEL, with no loader**: hold BOOTSEL on the Pico 2 board while
   plugging it into a computer, and copy the `.uf2` to the drive that
   appears. The drive goes away by itself when the copy ends. Quitting Doom
   then switches the PicoCalc off.
@@ -89,13 +90,12 @@ The 2024 re-release's add-ons are PWADs, loaded with `-file` (see
   level names and, for No Rest for the Living, no end after MAP08: this
   engine predates Chocolate Doom's support for them as mission packs.
 - **SIGIL** and **SIGIL II** do not: they are episodes 5 and 6, which a
-  vanilla engine cannot reach.
+  vanilla engine cannot play.
 - **Legacy of Rust** (`id1.wad`) does not: it is built for the re-release's
-  new engine features. Nor is there a reason to copy `iddm1.wad`
-  (deathmatch) or `extras.wad` (625 MB of the launcher's own content).
+  new engine features. 
 
 There is no multiplayer, mouse or ENDOOM screen. Heretic, Hexen and
-Strife are not in this engine.
+Strife are not playable.
 
 With music and effects playing, The Ultimate Doom's four demos run under
 `-timedemo` at 56, 60, 63 and 41 frames a second, at screen size 10 (the

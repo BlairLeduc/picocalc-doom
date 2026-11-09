@@ -1753,7 +1753,8 @@ SRAM tier in its own build directory, symbols checked (HW §9.8).
 Then a **30-minute soak** on battery, a level playing with keys typed over
 the UART throughout, a script checking the log: one boot, heartbeats
 throughout, late refills, I²C errors and dropped log lines zero, underruns
-only at level loads, and the game visibly advancing (EL §11.5): frames
+and OPL late halves only at level loads (the owner's word, 2026-11-08, M10:
+the release soak's three late halves fell at loads, beside the underruns), and the game visibly advancing (EL §11.5): frames
 published rising in every heartbeat, and the tic count with them.
 
 **Done when** the soak passes and every lever is recorded as kept or
@@ -1767,6 +1768,8 @@ with audio at screen size 10; `milestones.md`.)
 
 - Release build (§14.2); its own 30-minute soak with counters read over
   SWD and keys pressed by hand (EL §11.5).
+  (Run 2026-11-08: one boot, 31 minutes on battery, every check met but
+  keys in minutes 9 and 14, when the owner paused; `milestones.md`.)
 - Checked on a Plus 2 and a Plus 2 W if both are to hand; otherwise say
   which.
 - The `-timedemo` frame hashes equal M2's on the release image.
