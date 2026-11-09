@@ -13,7 +13,7 @@ Doom's data is not included. Use the IWAD from your own copy of Doom
 ## What you need
 
 - A PicoCalc with a **Pimoroni Pico Plus 2**, **Pico Plus 2 W**,
-  **Pico LiPo 2**, **Pico LiPo 2 XL W** installed.
+  **Pico LiPo 2** or **Pico LiPo 2 XL W** installed.
   Doom needs 8 MB of PSRAM, so it will not run on a Pico 2 or Pico 2 W.
   This one image also works on the Plus 2 W and LiPo 2 XL W boards;
   it does not use the radio.
@@ -26,7 +26,8 @@ Doom's data is not included. Use the IWAD from your own copy of Doom
 
 Download `picocalc-doom-v<x.y>-pico-plus2.uf2` from the
 [releases page](https://github.com/BlairLeduc/picocalc-doom/releases).
-Either:
+It is named for the Pico Plus 2, the board it is built for, and is the
+image for all four boards. Either:
 
 - **With UF2 Loader**: copy the `.uf2` to the card's `pico2-apps` folder and
   choose it from the loader's menu or the shell. Quitting Doom then goes
@@ -92,7 +93,7 @@ The 2024 re-release's add-ons are PWADs, loaded with `-file` (see
 - **SIGIL** and **SIGIL II** do not: they are episodes 5 and 6, which a
   vanilla engine cannot play.
 - **Legacy of Rust** (`id1.wad`) does not: it is built for the re-release's
-  new engine features. 
+  new engine features.
 
 There is no multiplayer, mouse or ENDOOM screen. Heretic, Hexen and
 Strife are not playable.
@@ -178,7 +179,7 @@ differs is mostly the hardware:
 
 | | FRANK DOOM | PicoCalc Doom |
 |---|---|---|
-| Hardware | FRANK or Murmulator boards; RP2350 with PSRAM | PicoCalc with a Pico Plus 2 or Plus 2 W |
+| Hardware | FRANK or Murmulator boards; RP2350 with PSRAM | PicoCalc with a Pico Plus 2, Plus 2 W, LiPo 2 or LiPo 2 XL W |
 | Picture | HDMI | The PicoCalc's 320×320 screen, the 320×240 picture centred, not scaled |
 | Sound | I2S | PWM stereo, to the speakers or headphones |
 | Input | PS/2 or USB keyboard and mouse | The PicoCalc's keyboard |

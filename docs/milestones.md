@@ -55,6 +55,12 @@ read by Claude; the owner played the release soak.
   through the cached alias (hardware-notes.md §2.7).
 - **The counter block can be read torn** (hardware-notes.md §2.7);
   `counters.sh --watch` takes each read twice until two agree.
+- **M1's test pattern is gone**, at the owner's word: `build/pico-release`'s
+  cache had kept `PICOCALC_DOOM_TEST_PATTERN=ON` from an earlier configure,
+  so the image soaked drew it at boot until Doom's first frame (every
+  other option at its default, checked against `CMakeLists.txt`).
+  `build_release.sh` configures afresh and would not have; the pattern and
+  its option are removed, so no build can.
 - The root `LICENSE` was a copy of upstream's notice; it is now the GPL-2.0
   text, with upstream's notice in the release zip's `upstream/`.
 

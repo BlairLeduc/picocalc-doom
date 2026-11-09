@@ -278,45 +278,6 @@ uint32_t core1_stack_size(void) {
     return (uint32_t)((uintptr_t)&__StackOneTop - (uintptr_t)&__StackOneBottom);
 }
 
-#if PICOCALC_DOOM_TEST_PATTERN
-/* The corner-coded test pattern (EL §13.3, hardware-notes.md §10):
- * orientation, colour order and all four edges, by eye. Drawn at boot in
- * a build that asks for it, M1's bring-up and the default until M3
- * presents frames.
- *
- *   - red square top left, green top right, blue bottom left, white
- *     bottom right, 32 pixels each;
- *   - a one-pixel white border round the whole panel;
- *   - in the picture's 240 rows: eight colour bars, white, yellow, cyan,
- *     green, magenta, red, blue, black, 40 pixels each, over a grey ramp
- *     of 32 steps in the last 40 rows, black on the left.
- */
-static void test_pattern(void) {
-    static const uint16_t bars[8] = {
-        RGB565(255, 255, 255), RGB565(255, 255, 0), RGB565(0, 255, 255), RGB565(0, 255, 0),
-        RGB565(255, 0, 255),   RGB565(255, 0, 0),   RGB565(0, 0, 255),   RGB565(0, 0, 0),
-    };
-    const uint16_t white = RGB565(255, 255, 255);
-    const unsigned w = LCD_PANEL_W, h = LCD_PANEL_H, sq = 32u;
-
-    for (unsigned i = 0; i < 8u; i++) lcd_fill(i * 40u, FRAME_Y, 40u, FRAME_H - 40u, bars[i]);
-    for (unsigned i = 0; i < 32u; i++) {
-        unsigned v = i * 255u / 31u;
-        lcd_fill(i * 10u, FRAME_Y + FRAME_H - 40u, 10u, 40u, RGB565(v, v, v));
-    }
-
-    lcd_fill(0, 0, w, 1, white);
-    lcd_fill(0, h - 1u, w, 1, white);
-    lcd_fill(0, 0, 1, h, white);
-    lcd_fill(w - 1u, 0, 1, h, white);
-
-    lcd_fill(0, 0, sq, sq, RGB565(255, 0, 0));
-    lcd_fill(w - sq, 0, sq, sq, RGB565(0, 255, 0));
-    lcd_fill(0, h - sq, sq, sq, RGB565(0, 0, 255));
-    lcd_fill(w - sq, h - sq, sq, sq, white);
-}
-#endif
-
 void core1_main(void) {
     /* 1. The southbridge first: a dead bus is the first thing to know
      *    about (hardware-notes.md §10). */
@@ -329,15 +290,10 @@ void core1_main(void) {
      * something other than 0. */
     g_core1.sb_power_off = sb_read(SB_REG_OFF, r) == SB_OK && r[1] != 0;
 
-    /* 2. The LCD, cleared before DISPON, then the pattern if asked for. */
+    /* 2. The LCD, cleared before DISPON. */
     t0 = time_us_32();
     g_core1.spi_hz = lcd_init();
     g_core1.lcd_us = time_us_32() - t0;
-#if PICOCALC_DOOM_TEST_PATTERN
-    t0 = time_us_32();
-    test_pattern();
-    g_core1.pattern_us = time_us_32() - t0;
-#endif
 
     board_temp_init();
     s_row_dma = dma_claim_unused_channel(true);
@@ -411,14 +367,12 @@ void core1_main(void) {
         }
         if (frame >= 0) {
             if (!bands_cleared) {
-                /* The bands are black (§7.5): the test pattern's
-                 * corners and border, if drawn, go with the first
-                 * frame. */
+                /* The bands are black (§7.5). */
                 lcd_fill(0, 0, LCD_PANEL_W, FRAME_Y, 0);
                 lcd_fill(0, FRAME_Y + FRAME_H, LCD_PANEL_W, LCD_PANEL_H - FRAME_Y - FRAME_H, 0);
                 bands_cleared = true;
 #if PICOCALC_DOOM_DIRTY_ROWS
-                /* A page, or the test pattern, covered the frame's rows. */
+                /* A page covered the frame's rows. */
                 s_rows_valid = false;
 #endif
             }

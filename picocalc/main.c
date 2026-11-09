@@ -4,8 +4,7 @@
  *
  * The boot order of §13.1: the clocks (§11.1); the log and stdio
  * (§14.2); the banner; PSRAM init; core 1, which brings up the
- * southbridge and the LCD (and draws the test pattern in a build that
- * asks for it); the PSRAM's round trip (§11.3), with a page if it fails;
+ * southbridge and the LCD; the PSRAM's round trip (§11.3), with a page if it fails;
  * then Doom, whose DG_Init() checks the card (dg_picocalc.c). From
  * picocalc-quest's main.c (D8).
  *
@@ -166,14 +165,8 @@ int main(void) {
     printf("  loader       : %s\n", picocalc_shell_loader_present()
            ? "started by UF2 Loader" : "installed from BOOTSEL, or over SWD");
     log_partition();
-#if PICOCALC_DOOM_TEST_PATTERN
-    printf("  lcd          : spi %lu Hz, init %lu us, test pattern %lu us\n",
-           (unsigned long)g_core1.spi_hz, (unsigned long)g_core1.lcd_us,
-           (unsigned long)g_core1.pattern_us);
-#else
     printf("  lcd          : spi %lu Hz, init %lu us\n",
            (unsigned long)g_core1.spi_hz, (unsigned long)g_core1.lcd_us);
-#endif
 
     /* The check, before anything is stored in the PSRAM. */
     psram_check_t check;
