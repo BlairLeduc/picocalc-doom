@@ -129,6 +129,11 @@ km_result_t keymap_feed(keymap_t *km, uint8_t state, uint8_t code,
  * §6.2), so it needs Alt's state. 0 for a code the MCU does not send. */
 uint8_t keymap_physical(uint8_t code, bool alt);
 
+/* Doom's code for a physical key pressed alone in play, as keymap_feed()
+ * sends it (not taking text, Alt up): what picocalc.ini's bindings store
+ * (design.md §9.6). 0 for a key that gives Doom nothing. */
+uint8_t keymap_play_code(uint8_t phys);
+
 /* Whether a physical key is held now. */
 bool keymap_held(const keymap_t *km, uint8_t phys);
 

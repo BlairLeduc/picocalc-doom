@@ -99,17 +99,18 @@ bool keymap_held(const keymap_t *km, uint8_t phys) {
 }
 
 /* Doom's code for a key as the MCU sent it at its press, with Alt as it
- * was then. 0 for a key that gives Doom nothing. */
-static uint8_t translate(const keymap_t *km, uint8_t code, uint8_t phys, bool alt) {
+ * was then, and whether Doom was taking text. 0 for a key that gives Doom
+ * nothing. */
+static uint8_t translate(bool text, uint8_t code, uint8_t phys, bool alt) {
     /* Letters in lower case whatever made them capitals (Shift, Caps
      * Lock, or Alt, under which the MCU leaves them capitals): Doom's
      * bindings, cheats and menus are lower case, and a save's name is
      * put in capitals by Doom. */
     if (code >= 'A' && code <= 'Z') return (uint8_t)(code | 0x20u);
     switch (code) {
-    case ' ': return km->text ? (uint8_t)' ' : DK_USE;
-    case ',': return km->text ? (uint8_t)',' : DK_STRAFE_L;
-    case '.': return km->text ? (uint8_t)'.' : DK_STRAFE_R;
+    case ' ': return text ? (uint8_t)' ' : DK_USE;
+    case ',': return text ? (uint8_t)',' : DK_STRAFE_L;
+    case '.': return text ? (uint8_t)'.' : DK_STRAFE_R;
     default: break;
     }
     if (code > ' ' && code < 0x7Fu) return code;
@@ -139,9 +140,13 @@ static uint8_t translate(const keymap_t *km, uint8_t code, uint8_t phys, bool al
      * the player; Home is Tab, End is Del, Insert is Enter, or I under
      * Alt. */
     case MCU_PGUP: case MCU_PGDN: case MCU_HOME: case MCU_END: case MCU_INSERT:
-        return translate(km, phys, phys, alt);
+        return translate(text, phys, phys, alt);
     default:            return 0;
     }
+}
+
+uint8_t keymap_play_code(uint8_t phys) {
+    return translate(false, phys, phys, false);
 }
 
 void keymap_reset(keymap_t *km) {
@@ -176,7 +181,7 @@ km_result_t keymap_feed(keymap_t *km, uint8_t state, uint8_t code,
     /* A press, or a hold whose press was lost: either way the key is
      * down from here. */
     h->down = true;
-    h->key = (phys == MCU_SHIFT_L || phys == MCU_SHIFT_R) ? 0 : translate(km, code, phys, alt);
+    h->key = (phys == MCU_SHIFT_L || phys == MCU_SHIFT_R) ? 0 : translate(km->text, code, phys, alt);
 
     if (phys == MCU_SHIFT_L || phys == MCU_SHIFT_R) {
         /* The Shift trap (§9.3): with Shift down the MCU sends nothing
