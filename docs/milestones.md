@@ -33,7 +33,7 @@ on a **Pico Plus 2**. D17 settled by the owner the same day
 | `run_key = ctrl` with fire moved (the owner, Plus 2) | **passed**: running held on Ctrl |
 | Movement on WASD (the owner, Plus 2) | **passed**: `forward`, `back`, `turn_left`, `turn_right` on `w` `s` `a` `d`; the automap still toggled and the menus still stepped with the arrows (`key_menu_*` untouched, §9.6) |
 | The automap's panning with movement on WASD (the owner, Plus 2) | **passed**: follow turned off with `f`, and the arrows panned the map (`key_map_*` untouched, §9.6) |
-| `run_key = 0` (the owner, Plus 2) | **refused, as designed** (`0` is the automap's max zoom, which the automap takes while it is up), but the band named the `run` line, "hold, with no run_key": the knock-on of the refused `run_key` came first in the file and hid the cause. **Fixed**: a refused `run_key` line is the only one named, and each automap and menu key says what it is ("the automap's max zoom key"); `test_settings` covers it, before and after the `run` line |
+| `run_key = 0` (the owner, Plus 2) | **refused, as designed** (`0` is the automap's max zoom, which the automap takes while it is up), but the band named the `run` line, "hold, with no run_key": the knock-on of the refused `run_key` came first in the file and hid the cause. **Fixed**: a refused `run_key` line is the only one named, and each automap and menu key says what it is ("the automap's max zoom key"); `test_settings` covers it, before and after the `run` line. **The fix seen by the owner on the Plus 2**: the band named the `run_key` line with its own reason |
 
 ### Not checked
 
