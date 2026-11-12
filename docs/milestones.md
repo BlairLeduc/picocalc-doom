@@ -29,18 +29,20 @@ on a **Pico Plus 2**. D17 settled by the owner the same day
 | Mutations to the parser | **each caught**: `m` dropped from the refused keys; the duplicate check removed; the earlier of two lines refused instead of the later; §9.2's keys left out of the duplicate check |
 | Firmware builds, development and release (`-DPICOCALC_DOOM_UART=OFF`) | **passed**, no warnings in the port's files. Development text 553,276 B against `main`'s 551,028 (+2,248), `.bss` +24 B; release text 517,796 B |
 | `check_sources.sh` | 95 compiled, 9 excluded, matching upstream `153a950` |
+| A refused binding named in the band (the owner, Plus 2) | **passed**: `fire = ]` and `use = ]`; the band named line 2, "a key already on fire" |
+| `run_key = ctrl` with fire moved (the owner, Plus 2) | **passed**: running held on Ctrl |
+| Movement on WASD (the owner, Plus 2) | **passed**: `forward`, `back`, `turn_left`, `turn_right` on `w` `s` `a` `d`; the automap still toggled and the menus still stepped with the arrows (`key_menu_*` untouched, §9.6) |
 
 ### Not checked
 
-- On the board: a refused binding line named in the band, the `bindings`
-  lines in the log (the release build logs nothing), and what `default.cfg`
-  holds for the moved keys after a quit (not read; the behaviour above is
-  what matters).
-- `run_key = ctrl` with fire moved. (`run = hold` with `run_key = p`,
-  carried from M7, **passed** on the Plus 2: the MCU delivers a letter held
-  with the arrows; in the hardware notes.)
-- The menus and automap with a turn key moved (the arrows should still
-  step the menu and pan the map).
+- The `bindings` lines in the log (the release build logs nothing), and
+  what `default.cfg` holds for the moved keys after a quit (not read; the
+  behaviour above is what matters).
+- The automap's panning on the arrows with a turn key moved (its toggle
+  and the menus were seen; panning only works with follow off).
+- (`run = hold` with `run_key = p`, carried from M7, **passed** on the
+  Plus 2: the MCU delivers a letter held with the arrows; in the hardware
+  notes.)
 
 ## M10: release
 
