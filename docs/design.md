@@ -998,7 +998,9 @@ themselves in a save's name are as they are.
   sees them, so a binding there would act twice: Esc, Enter, Backspace,
   F1–F10, `-`, `=`, and Break and Alt+F1, which cannot be named anyway.
 - The automap's own keys, `0` `f` `g` `m` `c`, which the automap takes
-  while it is up (the run key's rule, §10.3).
+  while it is up (the run key's rule, §10.3). Each of these and of `-` `=`
+  is named for what it does ("the automap's max zoom key"), so the band
+  says why.
 - A key already bound to another action, or the `run_key`, **once the
   whole file is read**: §9.2's key counts for any action the file leaves
   alone. A swap needs both lines, in either order (`fire = space`,
@@ -1190,7 +1192,10 @@ Shift, or `ctrl`, `alt` and the rest, that Doom's menu and automap do not
 take (`-` `=` `0` `f` `g` `m` `c`) and no action has once the file is read:
 with §9.2's keys, a letter such as `z`, `9`, or `;` `'` `[` `]` `\` `/`
 `` ` ``.
-`run = hold` with no `run_key` is named, and running stays always. The
+`run = hold` with no `run_key` is named ("run = hold needs a run_key"),
+and running stays always; when a `run_key` line was refused, only that
+line is named, with its own reason, since the band shows the first line
+not used and the knock-on would hide the cause (found in M11). The
 file is read into the PSRAM and let go; past 2 KB it is cut at a line.
 
 The actions in play are bound here, one line each (§9.6, D17): `fire = z`.

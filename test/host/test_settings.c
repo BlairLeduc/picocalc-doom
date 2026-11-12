@@ -147,12 +147,28 @@ static void test_hold(void) {
      * always. */
     CHECK(parse("run = hold\n") == 1, "hold alone");
     CHECK(g_s.run == SETTINGS_RUN_ALWAYS, "falls back to always");
-    CHECK(g_e[0].line == 1 && strcmp(g_e[0].why, "hold, with no run_key") == 0, "named");
+    CHECK(g_e[0].line == 1 && strcmp(g_e[0].why, "run = hold needs a run_key") == 0, "named");
     /* Among other errors, in the file's order. */
-    CHECK(parse("bad = 1\nrun = hold\nworse = 2\nrun_key = .\n") == 4, "four");
-    CHECK(g_e[0].line == 1 && g_e[1].line == 2 && g_e[2].line == 3 && g_e[3].line == 4,
-          "in order: %u %u %u %u", g_e[0].line, g_e[1].line, g_e[2].line, g_e[3].line);
-    CHECK(strcmp(g_e[1].why, "hold, with no run_key") == 0, "the hold line's why");
+    CHECK(parse("bad = 1\nrun = hold\nworse = 2\nrun_key = none\n") == 3, "three");
+    CHECK(g_e[0].line == 1 && g_e[1].line == 2 && g_e[2].line == 3,
+          "in order: %u %u %u", g_e[0].line, g_e[1].line, g_e[2].line);
+    CHECK(strcmp(g_e[1].why, "run = hold needs a run_key") == 0, "the hold line's why");
+    /* A run_key line refused names only itself, before or after the run
+     * line, for its own reason or for a key already bound; running stays
+     * always. */
+    static const struct { const char *text; unsigned line; const char *why; } refused[] = {
+        { "run = hold\nrun_key = 0\n", 2, "the automap's max zoom key" },
+        { "run_key = 0\nrun = hold\n", 1, "the automap's max zoom key" },
+        { "run = hold\nrun_key = !\n", 2, "a key typed without Shift" },
+        { "run = hold\nrun_key = .\n", 2, "a key already on strafe_right" },
+        { "run = hold\nrun_key = z\nrun_key = 1\n", 3, "a key already on weapon1" },
+    };
+    for (unsigned i = 0; i < sizeof refused / sizeof refused[0]; i++) {
+        CHECK(parse(refused[i].text) == 1 && g_e[0].line == refused[i].line &&
+                  strcmp(g_e[0].why, refused[i].why) == 0 && g_s.run == SETTINGS_RUN_ALWAYS,
+              "%s: %u errors, line %u \"%s\"", refused[i].text, parse(refused[i].text),
+              g_e[0].line, g_e[0].why);
+    }
     /* A run key with run left at always is kept, and unused. */
     CHECK(parse("run_key = z\n") == 0 && g_s.run == SETTINGS_RUN_ALWAYS && g_s.run_key == 'z',
           "run_key alone");
@@ -185,8 +201,10 @@ static void test_refused(void) {
           "Enter has no name");
     CHECK(parse("fire = !\n") == 1 && strcmp(g_e[0].why, "a key typed without Shift") == 0,
           "fire on !");
-    CHECK(parse("fire = f\n") == 1 &&
-              strcmp(g_e[0].why, "a key Doom's menu or automap takes") == 0, "fire on f");
+    CHECK(parse("fire = f\n") == 1 && strcmp(g_e[0].why, "the automap's follow key") == 0,
+          "fire on f");
+    CHECK(parse("fire = -\n") == 1 && strcmp(g_e[0].why, "Doom's screen size key") == 0,
+          "fire on -");
     CHECK(parse("jump = z\n") == 1 && strcmp(g_e[0].why, "no such setting") == 0, "no jump");
 }
 

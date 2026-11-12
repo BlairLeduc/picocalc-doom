@@ -110,8 +110,13 @@ static bool same(const char *p, size_t n, const char *name) {
  * marks) take in play before the game sees them (m_controls.c): a binding
  * there would act twice, or not at all while the automap is up. Esc,
  * Enter, Backspace and the function keys, the rest of what they take,
- * have no name here. */
-static const char s_doom_keys[] = "-=0fgmc";
+ * have no name here. Each says which it is, since the band shows why. */
+static const struct { char key; const char *why; } s_doom_keys[] = {
+    { '-', "Doom's screen size key" },  { '=', "Doom's screen size key" },
+    { '0', "the automap's max zoom key" }, { 'f', "the automap's follow key" },
+    { 'g', "the automap's grid key" },  { 'm', "the automap's mark key" },
+    { 'c', "the automap's clear marks key" },
+};
 
 const char *settings_key_refused(uint8_t c) {
     if (c <= ' ' || c >= 0x7Fu) return "one printable key";
@@ -119,8 +124,8 @@ const char *settings_key_refused(uint8_t c) {
     /* Shift is never part of a binding in play (§9.3): a key typed only
      * with Shift (`!`, `?`) is refused with it. */
     if (keymap_physical(c, false) != c) return "a key typed without Shift";
-    if (memchr(s_doom_keys, c, sizeof s_doom_keys - 1u) != NULL) {
-        return "a key Doom's menu or automap takes";
+    for (unsigned i = 0; i < sizeof s_doom_keys / sizeof s_doom_keys[0]; i++) {
+        if ((uint8_t)s_doom_keys[i].key == c) return s_doom_keys[i].why;
     }
     return NULL;
 }
@@ -237,6 +242,9 @@ unsigned settings_parse(settings_t *s, const char *text, size_t len,
     /* The last line that set run, to name if it asks to hold no key; and
      * the last that set each key, to name if the key is on another. */
     source_t run_src = { 0, 0, 0 };
+    /* A run_key line refused: its own line says why, so a hold left with
+     * no key is not named again on the run line. */
+    bool run_key_refused = false;
     source_t src[SLOTS];
     memset(src, 0, sizeof src);
 
@@ -282,6 +290,7 @@ unsigned settings_parse(settings_t *s, const char *text, size_t len,
         const char *why = apply(&t, k, kn, v, (size_t)(ve - v));
         if (why != NULL) {
             bad(&count, errors, max_errors, line, at, n, why);
+            if (slot_of(k, (size_t)(ke - k)) == SLOT_RUN) run_key_refused = true;
             continue;
         }
         *s = t;
@@ -316,17 +325,18 @@ unsigned settings_parse(settings_t *s, const char *text, size_t len,
                                      other == SLOT_RUN ? "a key already on run_key"
                                                        : s_actions[other].taken });
         *slot_key(s, worst) = worst == SLOT_RUN ? 0 : s_actions[worst].key;
+        if (worst == SLOT_RUN) run_key_refused = true;
         src[worst].line = 0;
     }
 
-    /* Held, with no key to hold: the run line is not used, and running
-     * stays always. */
+    /* Held, with no key to hold: running stays always, and the run line
+     * is named, unless a refused run_key line already says why. */
     if (s->run == SETTINGS_RUN_HOLD && s->run_key == 0) {
         s->run = SETTINGS_RUN_ALWAYS;
-        if (run_src.line != 0) {
+        if (run_src.line != 0 && !run_key_refused) {
             bad_late(&count, errors, max_errors,
                      (settings_error_t){ run_src.line, run_src.at, run_src.len,
-                                         "hold, with no run_key" });
+                                         "run = hold needs a run_key" });
         }
     }
     return count;
