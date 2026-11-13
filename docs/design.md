@@ -112,6 +112,7 @@ on them.
 | D14 | 2026-11-06 | Doom's own Quit (F10, or the menu) leaves to the shell, or powers off without the loader, after Doom saves its configuration; it no longer reboots (§13.3). | Esc in the WAD list taking this path settled 2026-11-07 (M4); Doom's Quit settled 2026-11-07 (M8) |
 | D15 | 2026-11-06 | Take Doom command-line arguments from the shell (`picocalc-doom -file sigil.wad -warp 1 1`) and from `picocalc.ini`'s `args` (§13.4). | `picocalc.ini`'s `args` accepted 2026-11-07 (M7); the shell's settled 2026-11-07 (M8) |
 | D16 | 2026-11-06 | The project is a git repository on GitHub, `BlairLeduc/picocalc-doom`, with upstream as a submodule; each milestone lands as a pull request with CI (EL §14.7). | Settled |
+| D17 | 2026-11-12 | Bind Doom's actions in play to PicoCalc keys from `picocalc.ini` (`fire = z`, `use = ctrl`), set at every start over `default.cfg`; menu keys stay §9.2's; one key per action, no chords (§9.6, M11). Extends D12 and §10.3. | Settled 2026-11-12 by the owner |
 
 ---
 
@@ -314,7 +315,7 @@ at all.
 | `DG_DrawFrame`, `DG_ScreenBuffer` | `doomgeneric_rp2350.c` | `picocalc/video_shim.c`: publish the frame and its palette to the pool, claim the next (§7.2) |
 | `DG_GetKey` | `doomgeneric_rp2350.c` | `picocalc/input_shim.c`: pop the key map's queue (§9) |
 | `DG_GetTicksMs`, `DG_SleepMs` | `doomgeneric_rp2350.c` | `picocalc/dg_picocalc.c`: the system timer; the sleep timed for the heartbeat's busy share (§14.3) |
-| `I_Error`, `I_Quit`, `I_AtExit`, `I_ZoneBase`, `I_Realloc`, `I_Init`, `I_Print*`, `I_Tactile`, `I_GetMemoryValue`, `I_ConsoleStdout`, `I_InitJoystick`, `I_BindJoystickVariables` | `doomgeneric_rp2350.c` | `picocalc/dg_picocalc.c` and `picocalc/fatal.c`: an error page; exit through the at-exit list (§13); `I_InitJoystick()`, which Doom calls after loading `default.cfg`, applies the run setting (§9.4) |
+| `I_Error`, `I_Quit`, `I_AtExit`, `I_ZoneBase`, `I_Realloc`, `I_Init`, `I_Print*`, `I_Tactile`, `I_GetMemoryValue`, `I_ConsoleStdout`, `I_InitJoystick`, `I_BindJoystickVariables` | `doomgeneric_rp2350.c` | `picocalc/dg_picocalc.c` and `picocalc/fatal.c`: an error page; exit through the at-exit list (§13); `I_InitJoystick()`, which Doom calls after loading `default.cfg`, applies the bindings (§9.6) and the run setting (§9.4) |
 | `i2s_init`, `i2s_deinit`, `i2s_set_fill_callback`, `i2s_start`, … | `src/pico/audio.c` | `picocalc/audio_shim.c` over the PWM ring (§8) |
 
 The patch, **expected**, to be confirmed as each milestone reaches it:
@@ -865,9 +866,10 @@ which `DG_GetKey()` returns one at a time.
 **Running is always on** (D12): Doom's run key is Shift by default, and
 Shift cannot be used (§9.3). Caps Lock turns it off and on again in play,
 and the bottom band says which (§7.5). `picocalc.ini` can start with it off,
-or put running on a held key the MCU delivers with the arrows (§10.3). The bindings are
-set as Doom's own `key_*` variables (§9.4), so a player can still change
-them in `default.cfg`.
+or put running on a held key the MCU delivers with the arrows (§10.3). The
+actions in play are set as Doom's own `key_*` variables at every start,
+from `picocalc.ini`'s bindings or this table's keys (§9.6, D17); the menu
+keys are fixed.
 
 F6–F10 and Break reach Doom without the Shift that made them (Quest found
 SCI taking Shift+F7 for another key, Quest §9.2). Shifted punctuation is
@@ -904,9 +906,11 @@ The port's map sends Doom's own key codes (`KEY_FIRE`, `KEY_USE`,
 button (the "`joyb_speed = 31`" hack Chocolate Doom keeps). So `run =
 always` sets `joyb_speed` to 31; `run = hold` sets `key_speed` to the run
 key; `run = off` leaves `key_speed` at upstream's `KEY_RSHIFT`, which the
-key map never sends. Doom calls `I_InitJoystick()`, which is the port's,
-after `M_LoadDefaults()`, so the port sets both there and wins over
-`default.cfg`: a shim, not the `d_main.c` hunk first planned (§5.3).
+key map never sends; the run key is stored as a physical key and set as
+the code the key map sends for it (`keymap_play_code()`, §9.6). Doom calls
+`I_InitJoystick()`, which is the port's, after `M_LoadDefaults()`, so the
+port sets both there and wins over `default.cfg`: a shim, not the
+`d_main.c` hunk first planned (§5.3).
 
 **Four bindings `default.cfg` cannot hold** (found in M8). The file keeps a
 key as its DOS scan code, through `m_config.c`'s `scantokey` table, and
@@ -915,7 +919,8 @@ fire, use and the two strafes (`KEY_FIRE` and the rest, 160–163), which the
 key map sends, are in no scan-code table, so Doom writes them as they are
 and reads them back unbound: after the first quit, Ctrl, Space, `,` and `.`
 would do nothing. Doom's menus cannot change a binding, so `I_InitJoystick()`
-puts any of the four that loaded as 0 back to its code. `test_config_file`
+put any of the four that loaded as 0 back to its code; since M11 it sets
+every action's binding at every start (§9.6), which covers them. `test_config_file`
 shows the loss.
 
 **Caps Lock** flips between always running and the setting's other state
@@ -937,6 +942,118 @@ Answered on the keyboard on 2026-11-07 (HW §6.3, `milestones.md`):
 - **Alt with Space** is the MCU's, as its source says: no press of Space,
   `,` or `.` arrived under Alt. So strafing on Alt and using at once is
   impossible; `,` `.` strafe without that limit.
+
+### 9.6 Bindings from `picocalc.ini` (D17, M11)
+
+**Why.** §9.2's bindings are fixed in the key map, and `default.cfg` cannot
+move them far (§9.4): it keeps a key as its DOS scan code, so it can put
+an action on a letter, a digit, an arrow, Tab or Alt, but nothing it writes
+means Ctrl, Space, `,` or `.`, whose codes (doomgeneric's `KEY_FIRE` and
+the rest, 160–163) are in no scan-code table. Fire cannot move to `z` and
+leave Ctrl for use. And the numbers are scan codes (`key_fire 44` is `z`),
+written by Doom, not a player. Doom's menus cannot change a binding at all.
+
+**What.** One `picocalc.ini` line per action, naming the PicoCalc key:
+
+```
+fire         = z
+use          = ctrl
+strafe_left  = a
+strafe_right = d
+next_weapon  = '
+weapon8      = none
+```
+
+| Setting | Doom's variable | §9.2's key |
+|---|---|---|
+| `forward`, `back` | `key_up`, `key_down` | Up, Down |
+| `turn_left`, `turn_right` | `key_left`, `key_right` | Left, Right |
+| `strafe_left`, `strafe_right` | `key_strafeleft`, `key_straferight` | `,` `.` |
+| `strafe` | `key_strafe` (held: the turn keys strafe) | Alt |
+| `fire`, `use` | `key_fire`, `key_use` | Ctrl, Space |
+| `weapon1`–`weapon8` | `key_weapon1`–`key_weapon8` | `1`–`8` |
+| `prev_weapon`, `next_weapon` | `key_prevweapon`, `key_nextweapon` | none (upstream's 0) |
+| `automap` | `key_map_toggle` | Tab |
+
+A value is one character the PicoCalc types without Shift (lower case for
+a letter, in any case in the file), or a name: `space`, `ctrl`, `alt`,
+`up`, `down`, `left`, `right`, `tab`, `del`; or `none`, which unbinds the
+action and frees its key. Setting names and key names are in any case.
+`run_key` takes the same keys (§10.3).
+
+**Translation.** The port stores the Doom code the key map sends for that
+key in play (`keymap.c`'s `translate()` with `text` off), not the key: a
+letter is itself, Space is `KEY_USE`, Ctrl `KEY_FIRE`, `,` `KEY_STRAFE_L`,
+Alt `KEY_RALT`, an arrow its arrow. So `use = ctrl` sets `key_use` to
+`KEY_FIRE`'s code. Doom only compares codes, so it works; doomgeneric's
+names for 160–163 are not their meanings. The key map does not change, so
+the Shift trap (§9.3), the held set, and Space, `,` and `.` typing
+themselves in a save's name are as they are.
+
+**Refused**, line named with why as for any setting (§10.3):
+
+- Shift, Caps Lock (running, §9.4), the power button, and any character
+  typed only with Shift (`!`, `?`): no binding in play uses Shift (§9.3).
+- The keys Doom's menu, messages and pause take in play before the game
+  sees them, so a binding there would act twice: Esc, Enter, Backspace,
+  F1–F10, `-`, `=`, and Break and Alt+F1, which cannot be named anyway.
+- The automap's own keys, `0` `f` `g` `m` `c`, which the automap takes
+  while it is up (the run key's rule, §10.3). Each of these and of `-` `=`
+  is named for what it does ("the automap's max zoom key"), so the band
+  says why.
+- A key already bound to another action, or the `run_key`, **once the
+  whole file is read**: §9.2's key counts for any action the file leaves
+  alone. A swap needs both lines, in either order (`fire = space`,
+  `use = ctrl`). Of two actions on one key, the later line is the one not
+  used, and the earlier keeps the key; the refused line's action goes back
+  to §9.2's key (not to an earlier line of its own), which may meet another
+  line's key in turn, so the check goes round until no two share. Each
+  round takes a line away, so it ends.
+- An unknown setting or key name.
+
+`run_key` is checked against the bindings as the file leaves them, not
+§9.2's: `weapon1 = none` frees `1` for running, and `fire = z` frees Ctrl.
+Since the run key is now one binding among the rest, `y` and `n`, which
+Doom takes only in a prompt, are allowed for it, as for an action.
+Running itself stays `run` and `run_key` (§9.4); Caps Lock is not
+bindable.
+
+**Applied** in `I_InitJoystick()`, after `M_LoadDefaults()` and the run
+setting's place (§9.4): a shim, no patch (§5.3). **Every action in the
+table is set at every start**, to the file's key or §9.2's, so for these
+actions `picocalc.ini` is the only authority and `default.cfg`'s values are
+overwritten. Otherwise Doom's quit would save a binding into
+`default.cfg` (as a scan code, or as 0 for 160–163), and taking the line
+out of `picocalc.ini` would not put the key back. It also replaces
+`keep_bindings()`, which only restored the four lost to 0. `default.cfg`
+keeps everything else: volumes, screen size, gamma, messages, and keys
+outside the table. The log lists each action whose key differs from §9.2.
+
+**Left as they are.** The menu's navigation (`key_menu_*`) and the
+automap's panning (`key_map_north` and the rest) keep the arrows, so
+`turn_left = a` turns on `a` in play while Left still steps the menu and
+pans the map. A letter bound to an action acts while a cheat is typed, as
+in Doom on a PC; a save's name takes it as a letter, since the menu has
+the keys then.
+
+**Not proposed: chords.** Doom binds one key per action; its only
+"chords" are held keys that change what others do, `key_strafe` and
+`key_speed`. Holding `p` to run with the arrows is already `run = hold`,
+`run_key = p` (§10.3), since the MCU delivers a plain key held with others
+(five at once, M4, `` ` `` and `/` among them). A real chord, `p` with Up
+doing something other than Up, would have the key map make events of its
+own, and fight the typing of cheats and save names.
+
+**Cost.** One byte an action in `settings_t`, 20 of them, and tables in
+flash; nothing on core 1 or the refill path. Measured in M11: 2,248 bytes
+of text and 24 of `.bss` on the development build.
+
+**Tests** (host, `test_settings`): every action and key name, in any case;
+`none`; each refusal; a duplicate against §9.2's keys and against another
+line; a swap in both orders; `run_key` against the bindings as the file
+leaves them; and, against `keymap_feed()`, that each key name's press gives
+the code the setting stores, so a binding always names a code the key map
+sends.
 
 ---
 
@@ -1070,15 +1187,21 @@ run_key   = z              the key that runs when run = hold; never Shift
 `iwad` is a file name in `/doom` that Doom's IWAD table knows; one that is
 not on the card is named in the band and the WAD list shown. `args` go
 after `-iwad`, so an `-iwad` in them replaces both `iwad` and the list.
-`run_key` is one key the PicoCalc types without Shift that neither the key
-map (§9.2) nor Doom's own defaults (weapon 8, the automap's `0` `f` `g`
-`m` `c`) use: a letter such as `z`, `9`, or `;` `'` `[` `]` `\` `/` `` ` ``.
-`run = hold` with no `run_key` is named, and running stays always. The
+`run_key` is a key as §9.6 names them: one the PicoCalc types without
+Shift, or `ctrl`, `alt` and the rest, that Doom's menu and automap do not
+take (`-` `=` `0` `f` `g` `m` `c`) and no action has once the file is read:
+with §9.2's keys, a letter such as `z`, `9`, or `;` `'` `[` `]` `\` `/`
+`` ` ``.
+`run = hold` with no `run_key` is named ("run = hold needs a run_key"),
+and running stays always; when a `run_key` line was refused, only that
+line is named, with its own reason, since the band shows the first line
+not used and the knock-on would hide the cause (found in M11). The
 file is read into the PSRAM and let go; past 2 KB it is cut at a line.
 
-Volumes, bindings, screen size, gamma and messages are Doom's, in its own
-menus and `default.cfg`. A line that cannot be used is logged with its
-number and why, and named in the bottom band when the game starts; the
+The actions in play are bound here, one line each (§9.6, D17): `fire = z`.
+Volumes, screen size, gamma and messages are Doom's, in its own menus and
+`default.cfg`. A line that cannot be used is logged with its number and
+why, and named in the bottom band when the game starts; the
 rest applies. The file is written only by the user (EL §8.7's
 "saving is a deliberate action": there is nothing to save).
 
@@ -1567,6 +1690,7 @@ until its hardware findings are in the notes.**
  M8  saves, configuration, quit to the shell, the time, arguments
  M9  performance pass and soak
  M10 release
+ M11 bindings in picocalc.ini                             (D17)
 ```
 
 ### M0: Skeleton, patch pipeline, CI
@@ -1785,6 +1909,29 @@ shipped.
 to the shell, from BOOTSEL on a Plus 2 W to power off; the shipped image's
 frame hashes the host's; `milestones.md`.)
 
+### M11: Bindings in `picocalc.ini` (D17)
+
+- §9.6: the settings, their refusals, and `I_InitJoystick()` setting every
+  action at each start; `keep_bindings()` folded in.
+- `test_settings` as §9.6 says; mutations (a refusal dropped, the
+  duplicate check removed, the whole-file check made line by line) each
+  fail it.
+- `settings.h`'s comment, §9.2's last paragraph, §9.4, §10.3 and the
+  README's keys brought into line; `default.cfg`'s role for the bindings
+  restated.
+- On the keyboard: `fire = z` and `use = ctrl` play, survive a quit and
+  restart, and the line taken out puts Ctrl back on fire; a refused line
+  is named in the band; and `run = hold`, `run_key = p` with the arrows
+  (M7's not-checked letter held with an arrow), in the hardware notes
+  either way.
+
+**Done when** a binding to Ctrl, Space, `,` or `.` moved from
+`picocalc.ini` plays on the board and lasts across Doom's quit, and the
+host tests pass.
+(Met 2026-11-12 on a Plus 2: fire on `]`, use on `[`, strafes on `q` `w`,
+running held on `p`; `]` still fired after a quit and restart, and Ctrl
+again once the line was commented out; `milestones.md`.)
+
 ---
 
 ## 17. Unverified constants
@@ -1872,7 +2019,8 @@ milestone named.
   latency or core 1's time calls for it, a measured experiment, written up
   in the hardware notes either way.
 - **A port menu** (run mode, poll rate, save `picocalc.ini`). Doom's own
-  menus cover volumes, bindings and screen size. If the settings file
+  menus cover volumes and screen size, and `picocalc.ini` the bindings
+  (§9.6). If the settings file
   proves awkward.
 - **An overclock above 300 MHz.** If the gate fails after its levers.
 - **Hardware vertical scroll.** Nothing in Doom scrolls in a way it would

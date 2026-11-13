@@ -1608,6 +1608,19 @@ each) on the same core as the keyboard poll; measured from UART logs over
   one release (state 3), with no repeats; four taps in play gave four
   presses.
 
+**2026-11-12, Pimoroni Pico Plus 2 (not the W) in a PicoCalc, 300 MHz, a
+first-person game with no logging (a release build), its controls moved off
+the modifiers onto plain character keys; reported by the board's owner from
+play, not logged.**
+
+- **A letter held with the arrows is delivered**: with running on `p`
+  held, holding `p` while steering with the arrows ran. A plain character
+  key works as a hold-to-modify key alongside the arrows, as Alt and Ctrl
+  do; it needs no modifier.
+- **`[` and `]` work as action keys in play** (fire and use), and `q` and
+  `w` as strafe left and right, used together with the arrows and `p`.
+  Nothing was reported lost or stuck.
+
 ---
 
 ## 7. Storage

@@ -128,8 +128,8 @@ runs at 35 tics a second, so those rates are above what play needs.
 **Running is always on**, and Caps Lock turns it off and on again; the
 line under the picture says which. Shift does nothing in play: the
 PicoCalc's keyboard swallows Shift with Left or Right, so it cannot be
-a binding. `picocalc.ini` can start with running off, or make it a key
-you hold.
+a binding. `picocalc.ini` can start with running off, make it a key
+you hold, or move any of the keys for play (below).
 
 Quit from Doom's menu, or Shift+F5 then `y`: Doom saves its settings, and
 the PicoCalc goes back to the shell or switches off. With the stock UF2
@@ -138,8 +138,9 @@ program.
 
 ## Settings
 
-Volumes, screen size, gamma, messages and the keys are Doom's own, set in
-its menus or `default.cfg`, and kept when you quit.
+Volumes, screen size, gamma and messages are Doom's own, set in its menus
+or `default.cfg`, and kept when you quit. The keys for play are set in
+`picocalc.ini`.
 
 `/doom/picocalc.ini` is optional, for what Doom cannot set itself. Each
 line is `key = value`; `#` or `;` starts a comment.
@@ -153,6 +154,43 @@ run_key = z                  # the key held to run, when run = hold
 
 `run_key` is one key that is typed without Shift and is not otherwise in
 use: a letter such as `z`, `9`, or one of `;` `'` `[` `]` `\` `/` `` ` ``.
+Hold it with the arrows to run: `run = hold` and `run_key = p` runs on
+`p`.
+
+### Keys for play
+
+Each action in play can be put on another key, one line each:
+
+```
+fire         = z
+use          = ctrl
+strafe_left  = a
+strafe_right = d
+next_weapon  = '
+weapon8      = none
+```
+
+| Setting | Starts on |
+|---|---|
+| `forward`, `back` | Up, Down |
+| `turn_left`, `turn_right` | Left, Right |
+| `strafe_left`, `strafe_right` | `,` `.` |
+| `strafe` (held, the turn keys strafe) | Alt |
+| `fire`, `use` | Ctrl, Space |
+| `weapon1`–`weapon8` | `1`–`8` |
+| `prev_weapon`, `next_weapon` | nothing |
+| `automap` | Tab |
+
+A key is one character typed without Shift, or one of `space`, `ctrl`,
+`alt`, `up`, `down`, `left`, `right`, `tab`, `del`; `none` takes an action
+off its key. Shift and Caps Lock cannot be used, nor the keys the menu
+and automap need (Esc, Enter, Backspace, the F keys, `-` `=` `0` `f` `g`
+`m` `c`). A key can do one thing: to swap two, write both lines
+(`fire = space` and `use = ctrl`). The menus keep their keys, so with
+`turn_left = a` the arrows still move through the menus and the automap.
+These lines win over `default.cfg` at every start; take one out and the
+key goes back to where it started.
+
 A line that cannot be used is named under the picture when the game starts,
 and the rest of the file still applies.
 

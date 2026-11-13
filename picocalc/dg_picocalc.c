@@ -9,9 +9,10 @@
  * failure (§13.1), and reads picocalc.ini (§10.3); DG_StartScreen()
  * starts the IWAD, from the WAD list when there is more than one and the
  * settings name none (§13.1, D13), with the settings' args (D15);
- * I_InitJoystick() applies the run setting (§9.4); I_Error() shows its page and
- * starts again on a key; I_Quit() runs the at-exit list, which saves
- * Doom's configuration, and leaves to the shell or powers off (§13.3).
+ * I_InitJoystick() applies the bindings and the run setting (§9.4, §9.6);
+ * I_Error() shows its page and starts again on a key; I_Quit() runs the
+ * at-exit list, which saves Doom's configuration, and leaves to the shell
+ * or powers off (§13.3).
  * The shell's arguments follow picocalc.ini's (§13.4).
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -565,30 +566,10 @@ void I_Init(void)
     I_InitGraphics();
 }
 
-/* doomgeneric's own codes for fire, use and the strafes, which the key
- * map sends (§9.2), are not DOS scan codes: default.cfg holds a key as
- * its scan code, so Doom writes these four as their codes, 160 to 163,
- * and reads any number past 127 back as 0, unbound. Doom's menus cannot
- * change a binding, so one of these unbound after the load is the file's
- * doing, not the player's, and is put back (§13.3). */
-static void keep_bindings(void)
-{
-    static const struct { int *key; int code; const char *name; } kept[] = {
-        { &key_fire, KEY_FIRE, "key_fire" },
-        { &key_use, KEY_USE, "key_use" },
-        { &key_strafeleft, KEY_STRAFE_L, "key_strafeleft" },
-        { &key_straferight, KEY_STRAFE_R, "key_straferight" },
-    };
-    for (unsigned i = 0; i < sizeof kept / sizeof kept[0]; i++) {
-        if (*kept[i].key == 0) {
-            *kept[i].key = kept[i].code;
-            FRANK_DOOM_LOG("  bindings     : %s put back to %d\n", kept[i].name, kept[i].code);
-        }
-    }
-}
-
 /* Doom calls this after M_LoadDefaults(), so what is set here wins over
- * default.cfg: the bindings default.cfg cannot hold, and the run setting,
+ * default.cfg: picocalc.ini's bindings, every action's at every start,
+ * which also puts back the four default.cfg cannot hold (§9.4, §9.6),
+ * and the run setting,
  * as a shim, not the d_main.c hunk §9.4 first planned (§5.3). Doom's
  * first frame is near, so a settings line not used is named in the band
  * now; core 1 shows it once the bands are clear. */
@@ -598,7 +579,7 @@ void I_InitJoystick(void)
      * to have lasted (M8). */
     FRANK_DOOM_LOG("  config       : screenblocks %d, sfx_volume %d, music_volume %d\n",
                    screenblocks, sfxVolume, musicVolume);
-    keep_bindings();
+    settings_apply_bindings();
     settings_apply_run();
     settings_announce();
 }

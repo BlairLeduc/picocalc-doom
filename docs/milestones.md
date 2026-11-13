@@ -4,6 +4,46 @@ What each milestone verified, on which board, on what date, and what was
 not checked, newest first. `design.md` §16 holds each milestone's scope
 and done-when criteria; this file keeps the full record.
 
+## M11: bindings in `picocalc.ini`
+
+**2026-11-12**: built and host-tested by Claude on the
+`m11-bindings` branch; Arm GCC 15.2.Rel1, Pico SDK 2.3.1. The release
+build (`-DPICOCALC_DOOM_UART=OFF`) of the branch's working tree, copied to
+the card's `bin/doom.uf2` and started from the shell, played by the owner
+on a **Pico Plus 2**. D17 settled by the owner the same day
+(design.md §9.6).
+
+### Done when
+
+| Check | Result |
+|---|---|
+| A binding to Ctrl, Space, `,` or `.` moved from `picocalc.ini` plays on the board | **passed**, the owner, on the Plus 2: `fire = ]`, `use = [`, `strafe_left = q`, `strafe_right = w`, `run = hold`, `run_key = p`; all worked in play |
+| It lasts across Doom's quit and a restart | **passed**, the owner, on the Plus 2: Quit from Doom's menu (which writes `default.cfg`), started again from the shell, and `]` still fired. Then `fire = ]` commented out with `#` in `picocalc.ini`: Ctrl fired again, so `default.cfg`'s saved binding did not survive the file's |
+| Host tests | **passed**: 12 of 12 |
+
+### Checked so far
+
+| Check | Result |
+|---|---|
+| `test_settings` (§9.6) | **passed**: every action name in either case on a free key; every key name, free or freed with `none`; `none`; a swap in both orders; a key against §9.2's key of an untouched action, and against another line, the later refused; a refusal bringing back a default another line had taken, both lines named in order; the same action twice; the run key against every action's key, and against the bindings as the file leaves them (`weapon1 = none` frees `1`, `fire = z` frees Ctrl), and a binding after it; each refusal (Shift-only characters, `-` `=` `0` `f` `g` `m` `c`, Shift and Enter having no name); each nameable key's press through `keymap_feed()` giving the code its binding stores; §9.2's keys giving `m_controls.c`'s defaults and `keymap_bindings`' codes |
+| Mutations to the parser | **each caught**: `m` dropped from the refused keys; the duplicate check removed; the earlier of two lines refused instead of the later; §9.2's keys left out of the duplicate check |
+| Firmware builds, development and release (`-DPICOCALC_DOOM_UART=OFF`) | **passed**, no warnings in the port's files. Development text 553,276 B against `main`'s 551,028 (+2,248), `.bss` +24 B; release text 517,796 B |
+| `check_sources.sh` | 95 compiled, 9 excluded, matching upstream `153a950` |
+| A refused binding named in the band (the owner, Plus 2) | **passed**: `fire = ]` and `use = ]`; the band named line 2, "a key already on fire" |
+| `run_key = ctrl` with fire moved (the owner, Plus 2) | **passed**: running held on Ctrl |
+| Movement on WASD (the owner, Plus 2) | **passed**: `forward`, `back`, `turn_left`, `turn_right` on `w` `s` `a` `d`; the automap still toggled and the menus still stepped with the arrows (`key_menu_*` untouched, §9.6) |
+| The automap's panning with movement on WASD (the owner, Plus 2) | **passed**: follow turned off with `f`, and the arrows panned the map (`key_map_*` untouched, §9.6) |
+| `run_key = 0` (the owner, Plus 2) | **refused, as designed** (`0` is the automap's max zoom, which the automap takes while it is up), but the band named the `run` line, "hold, with no run_key": the knock-on of the refused `run_key` came first in the file and hid the cause. **Fixed**: a refused `run_key` line is the only one named, and each automap and menu key says what it is ("the automap's max zoom key"); `test_settings` covers it, before and after the `run` line. **The fix seen by the owner on the Plus 2**: the band named the `run_key` line with its own reason |
+
+### Not checked
+
+- The `bindings` lines in the log (the release build logs nothing), and
+  what `default.cfg` holds for the moved keys after a quit (not read; the
+  behaviour above is what matters).
+- (`run = hold` with `run_key = p`, carried from M7, **passed** on the
+  Plus 2: the MCU delivers a letter held with the arrows; in the hardware
+  notes.)
+
 ## M10: release
 
 **2026-11-08**, on a Pimoroni Pico Plus 2 W (RP2350B rev
